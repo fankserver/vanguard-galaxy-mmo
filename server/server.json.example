@@ -1,0 +1,9 @@
+{
+  "port": 34567,
+  "webPort": 8080,
+  "dataDir": "data",
+  "worldsDir": "worlds",
+  "maxPeers": 64,
+  "maxPlayersPerWorld": 32,
+  "acceptedHashes": []
+}

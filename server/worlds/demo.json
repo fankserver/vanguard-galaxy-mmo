@@ -1,0 +1,46 @@
+{
+  "id": "demo",
+  "name": "Demo Hub",
+  "systems": [
+    {
+      "id": "hub-1",
+      "storyId": "mmo-demo-hub",
+      "name": "Hub Transit",
+      "x": 0, "y": 0, "level": 8, "faction": "Gold",
+      "pois": [
+        { "id": "hub-station", "kind": "station", "name": "Hub Starport", "x": 0, "y": 6, "faction": "Gold", "level": 8 },
+        { "id": "hub-gate-a", "kind": "gate", "name": "Gate to Mines", "x": -10, "y": -2 },
+        { "id": "hub-gate-b", "kind": "gate", "name": "Gate to Wreck", "x": 10, "y": -2 }
+      ]
+    },
+    {
+      "id": "mine-1",
+      "storyId": "mmo-demo-mine",
+      "name": "Empty Veins",
+      "x": -14, "y": 1, "level": 7, "faction": "MiningGuild",
+      "pois": [
+        { "id": "mine-field", "kind": "mining", "name": "Ore Field", "x": -18, "y": 0, "faction": "MiningGuild", "level": 7 },
+        { "id": "mine-gate", "kind": "gate", "name": "Gate from Hub", "x": -10, "y": 0 }
+      ]
+    },
+    {
+      "id": "salvage-1",
+      "storyId": "mmo-demo-salvage",
+      "name": "Carrion Drift",
+      "x": 14, "y": -2, "level": 9, "faction": "SalvageGuild",
+      "pois": [
+        { "id": "salvage-wreck", "kind": "salvage", "name": "Monsoon Wreck", "x": 18, "y": -1, "faction": "SalvageGuild", "level": 9 },
+        { "id": "salvage-gate", "kind": "gate", "name": "Gate from Hub", "x": 10, "y": -2 }
+      ]
+    }
+  ],
+  "links": [
+    { "a": "hub-1", "b": "mine-1" },
+    { "a": "hub-1", "b": "salvage-1" }
+  ],
+  "timeline": [
+    { "at": 8, "systemId": "hub-1", "command": "announce", "args": { "text": "Welcome to the demo hub." } },
+    { "at": 20, "systemId": "mine-1", "command": "wave", "args": { "count": 3, "shipClass": "Monsoon" } },
+    { "at": 45, "systemId": "salvage-1", "command": "loot", "args": { "itemId": "StrangeDust", "amount": 5 } }
+  ]
+}
