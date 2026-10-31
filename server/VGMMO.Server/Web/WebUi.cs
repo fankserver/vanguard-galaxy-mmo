@@ -153,7 +153,7 @@ public sealed class WebUi
 <header>
   <h1>VGMMO server map</h1>
   <span id="meta">loading…</span>
-  <span id="legend" style="font-size:11px;color:#5f6d85">station = in-game sprite · ◆ mining · ☠ salvage · ⇄ gate · ◉ wormhole · emblem under stations · <span style="color:#19c8ff">●</span> players(count)</span>
+  <span id="legend" style="font-size:11px;color:#5f6d85">icons = authentic in-game sprites (all POIs) · faction emblem under stations · <span style="color:#19c8ff">●</span> players(count)</span>
 </header>
 <div id="layout">
   <div id="mapwrap"><canvas id="map"></canvas></div>
@@ -231,40 +231,38 @@ function drawMap(){
     ctx.strokeStyle = '#2c3a55'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
     // No text label on links — the game marks doors with the gate sprites themselves.
   }
+  const labels = [];
   for (const s of world.systems){
     const [x,y]=f.px(s.x,s.y);
     ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2);
     ctx.fillStyle = '#141b28'; ctx.fill();
     ctx.strokeStyle = hashColor(s.faction || s.id); ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace';
-    ctx.fillText('L' + s.level + ' · ' + s.id, x-26, y-46);   // clears POI icons north of center
-    ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
-    ctx.fillText(s.name, x, y+44); ctx.textAlign='left';
-    // --- Icon presentation: station keeps the authentic in-game sprite (plate-free
-    // glyph) + faction emblem below — owner-approved. Other kinds render as clean
-    // glyphs in the same white style: their source sprites (Map_Poi_Location_*) are
-    // big location PLATES with baked art that turn to noise at map scale.
+    labels.push({ x, y, text: 'L' + s.level + ' · ' + s.id, name: s.name });   // drawn LAST, over all plates
+    // --- FINAL ICON SET — do not swap styles again ---------------------------
+    // Every POI kind draws its AUTHENTIC in-game sprite (Map_Poi_Location_*,
+    // exported from the WorldMapPOI prefabs) at 40px — the proportion the galaxy
+    // map uses next to system circles (32px was too small for the detailed art).
+    // Station additionally gets its faction emblem below (in-game rule). The glyph
+    // circle below is only a missing-file fallback, never a substitute style.
     function poiIcon(px, py, kind, faction){
-      const box = 32;
-      if (kind === 'station' && loaded('Poi_SpaceStation')){
-        const img = iconFor('Poi_SpaceStation');
+      const file = 'Poi_' + (ICON_FILES[kind] || 'SpaceStation');
+      const box = 40;
+      if (loaded(file)){
+        const img = iconFor(file);
         const s = box / Math.max(img.naturalWidth, img.naturalHeight);
         ctx.drawImage(img, px - img.naturalWidth*s/2, py - img.naturalHeight*s/2,
                       img.naturalWidth*s, img.naturalHeight*s);
-        if (faction && loaded('Faction_' + faction)){
-          const badge = iconFor('Faction_' + faction);
-          const bs = 14, by = py + box/2 + 9;
-          const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
-          ctx.drawImage(badge, px - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
-                        badge.naturalWidth*bsx, badge.naturalHeight*bsx);
-        }
-        return;
+      } else {
+        ctx.beginPath(); ctx.arc(px,py,12,0,Math.PI*2);
+        ctx.strokeStyle = '#dfe7f5'; ctx.lineWidth = 2; ctx.stroke();
       }
-      const glyph = ({mining:'\u25C6', salvage:'\u2620', gate:'\u21C4', wormhole:'\u25C9'})[kind] || '?';
-      ctx.fillStyle = '#dfe7f5';
-      ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center';
-      ctx.fillText(glyph, px, py + 7);
-      ctx.textAlign = 'left';
+      if (kind === 'station' && faction && loaded('Faction_' + faction)){
+        const badge = iconFor('Faction_' + faction);
+        const bs = 14, by = py + box/2 + 9;
+        const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
+        ctx.drawImage(badge, px - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
+                      badge.naturalWidth*bsx, badge.naturalHeight*bsx);
+      }
     }
     for (const p of s.pois){
       // POI coords are system-local; the game draws them around their system.
@@ -314,6 +312,14 @@ function drawMap(){
         ctx.fillText(String(playersHere.length), bx, by+4); ctx.textAlign='left';
       }
     }
+  }
+  // Labels LAST: system text always paints on top of every plate/icon.
+  for (const l of labels){
+    ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace';
+    ctx.fillText(l.text, l.x-26, l.y-58);
+    ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace';
+    ctx.lineWidth = 3; ctx.strokeStyle = '#0b0d12';   // outline keeps it legible even over a plate
+    ctx.strokeText(l.name, l.x+24, l.y+5); ctx.fillText(l.name, l.x+24, l.y+5);
   }
 }
 
