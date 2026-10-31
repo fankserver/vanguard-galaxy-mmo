@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>VGMMO.Client</AssemblyName>
+    <Product>VGMMO Client</Product>
+    <Version>0.1.0</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <RootNamespace>VGMMO.Client</RootNamespace>
+    <!-- Plugins need their dependency DLLs next to them. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <RestoreAdditionalProjectSources>
+      https://api.nuget.org/v3/index.json;
+      https://nuget.bepinex.dev/v3/index.json;
+      https://nuget.samboy.dev/v3/index.json
+    </RestoreAdditionalProjectSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
+    <PackageReference Include="BepInEx.Core" Version="5.*" />
+    <PackageReference Include="BepInEx.PluginInfoProps" Version="2.*" />
+    <PackageReference Include="UnityEngine.Modules" Version="6000.2.6" IncludeAssets="compile" />
+    <!-- Pinned to 2.10.x: BepInEx 5 ships HarmonyX 2.10, and 2.16 adds a
+         transitive dep on MonoBackports that BepInEx 5 doesn't load at runtime. -->
+    <PackageReference Include="HarmonyX" Version="2.10.*" />
+    <!-- Game ships Newtonsoft; compile-only, never copied into the plugin output. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" ExcludeAssets="runtime" />
+    <!-- Game does NOT ship a network library: LiteNetLib ships with the plugin. -->
+    <PackageReference Include="LiteNetLib" Version="1.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../server/VGMMO.Protocol/VGMMO.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Current-build game assembly (symlink; never committed as binary). -->
+    <Reference Include="Assembly-CSharp">
+      <HintPath>../lib/Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

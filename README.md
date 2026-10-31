@@ -1,53 +1,50 @@
-# VGMMO — Vanguard Galaxy MMO (server)
+# VGMMO — Vanguard Galaxy MMO (server + client)
 
-The server half of the MMO idea: a headless **world authority + relay** that a BepInEx client
-mod (not built yet) connects to. It owns identity/layout, event timelines, the loot/trade
-ledger and presence; it never runs game code and never loads game files.
+The MMO mod split: a headless **world authority + relay** server and a BepInEx **client**
+mod (in development). Server never runs game code and never loads game files; it owns
+identity/layout, event timelines, the loot/trade ledger and presence.
 
-- Design docs live in `../docs/`:
-  - `mmo-mod-design.md` — client mod, hosted systems, save lifecycle (design)
-  - `mmo-sync-design.md` — sync architecture, sim-host model (design)
-  - `mmo-server-design.md` — this server's design (design)
+- Design docs live in `../docs/`: `mmo-mod-design.md`, `mmo-sync-design.md`, `mmo-server-design.md`.
 
 ## Layout
 
 ```
-server/
-  VGMMO.Protocol/  shared message contracts (netstandard2.1, Newtonsoft.Json; no Unity, no game types)
-  VGMMO.Server/    .NET console: UDP transport (LiteNetLib), sessions/worlds/groups,
-                   event planner, loot/trade ledger, state persistence, console ops,
-                   and a Kestrel web UI (map + activity feed)
-  worlds/          authored world content (*.json)
+server/  VGMMO.Protocol (shared contracts) · VGMMO.Server (UDP relay + Kestrel web map UI)
+         worlds/ (authored content)
+client/  VGMMO.Client (BepInEx 5 plugin: connect panel, session, ship-state send, remote markers)
+probe/   VGMMO.Probe (headless test client for replication checks)
 ```
 
 ## Quick start
 
 ```bash
-make build      # dotnet build -c Release
-make selftest   # in-process integration test over real UDP + HTTP (prints PASS/FAIL)
-make run        # start server (UDP 34567, web http://127.0.0.1:8080)
+make build         # server build
+make selftest      # server integration test over real UDP+HTTP (21 checks)
+make run           # server: UDP 34567, web http://127.0.0.1:8080 (map + activity feed)
+make client-build  # BepInEx client plugin
+make client-deploy # deploy to BepInEx/plugins/VGMMO (game must be closed)
 ```
 
-Then open `http://127.0.0.1:8080` — the map page shows the world (systems, gates, POIs),
-live player dots and the activity feed. Console commands: `status`, `players`, `worlds`,
-`activity`, `snapshot`, `kick <name>`, `quit`.
+Client smoke test (with the game closed, server running):
+
+```bash
+# copy a disposable save slot for in-world testing (keeps the real save untouched)
+cp "$SAVES/Fank-5.save" "$SAVES/VGMMO-Test.save"
+# set [test] autoLoadSlot = VGMMO-Test and [session] autoConnect = true in
+# BepInEx/config/vgmmo.client.cfg, launch the game, then:
+dotnet run --project probe/VGMMO.Probe -c Release -- 127.0.0.1 34567 Probe hub-1
+# expect: probe logs 'remote Player @ (x,y)' and the game log logs
+# 'remote player Probe appeared' — two-way replication via the server.
+```
 
 ## Configuration
 
-`server.json` (see `server.json.example`) — or CLI flags `--port`, `--web-port`, `--data`,
-`--worlds`. `acceptedHashes: []` accepts any client build (dev); set a list of catalog
-hashes to gate clients by mod build (game version is never part of the gate).
-
-## World content
-
-`server/worlds/<name>.json` — author one file per world. Systems have ids, positions,
-factions, POIs and payload specs; `links` join systems; `timeline` entries fire once at
-(server start + `at` seconds) and are broadcast to the system's players.
-`VGMMO.Server --self-test` uses a generated world; run `make selftest` to see a working
-example end-to-end.
+Server: `server/server.json` (or `--port`, `--web-port`, `--data`, `--worlds`).
+`acceptedHashes: []` accepts any client build (dev); set catalog hashes to gate by mod
+build (game version is never part of the gate). Client: `BepInEx/config/vgmmo.client.cfg`.
 
 ## Status / security
 
-Freely reachable, open join (build-gated only). Abuse protection is operational: per-peer
-rate limits, caps and authoritative clamping of relayed values. No anti-cheat; coop-trust
+Server is publicly reachable, open join (build-gated only, optional password). Abuse
+protection is operational (rate limits, caps, clamped relay). No anti-cheat; coop-trust
 model per the design docs.
