@@ -371,6 +371,23 @@ public sealed class MmoSession : MonoBehaviour
         }
         marker = _markers.GetValueOrDefault(key);
         if (marker == null) return;
+        // Empty clone (built while the ship was docked/hidden): rebuild the moment
+        // the ship's visuals become active (flying). At most once per 1.5s.
+        if (_markerCount.GetValueOrDefault(key) == 0 && Time.time - _rebuildT.GetValueOrDefault(key) > 1.5f)
+        {
+            _rebuildT[key] = Time.time;
+            var live = liveSrc ?? (shipId.Length == 0 || shipId == CurrentShipId() ? LocalShip()?.transform : null);
+            if (HasVisibleRenderer(live))
+            {
+                Destroy(marker);
+                if (_markerLabels.Remove(key, out var old)) Destroy(old.gameObject);
+                _markers.Remove(key);
+                _markerShip.Remove(key);
+                CreateRemoteMarker(key, name, fullName, title, shipId, liveSrc, x, y);
+                marker = _markers.GetValueOrDefault(key);
+                if (marker == null) return;
+            }
+        }
         var renderer = marker.GetComponent<Renderer>();
         if (renderer != null) renderer.material.color = ColorFor(name ?? key);
         // rs position is in server layout frame; game world = local * mapToLocalConversion.
@@ -413,7 +430,7 @@ public sealed class MmoSession : MonoBehaviour
         try
         {
             var u = MapPointOfInterest.mapToLocalConversion;   // 250
-            var marker = BuildShipVisual(shipId, liveSrc, out var halfLen);
+            var marker = BuildShipVisual(shipId, liveSrc, out var halfLen, out var cloned);
             if (marker == null)
             {
                 marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -422,6 +439,7 @@ public sealed class MmoSession : MonoBehaviour
                 marker.transform.localScale = new Vector3(u * 0.3f, u * 0.14f, u * 0.14f);
                 halfLen = u * 0.15f;
             }
+            _markerCount[key] = cloned;
             if (marker.transform.Find("flame") == null) AttachFlame(marker, halfLen);
             marker.transform.SetParent(transform, false);
             if (name != null && fullName != null)
@@ -440,7 +458,11 @@ public sealed class MmoSession : MonoBehaviour
         catch (System.Exception e) { Log("marker: " + e.Message); }
     }
 
-    private void AttachFlame(GameObject marker, float halfLen)    {
+    private readonly Dictionary<string, float> _rebuildT = new();
+    private readonly Dictionary<string, int> _markerCount = new();
+
+    private void AttachFlame(GameObject marker, float halfLen)
+    {
         var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         var fc = flame.GetComponent<Collider>();
         if (fc != null) Destroy(fc);
@@ -458,33 +480,39 @@ public sealed class MmoSession : MonoBehaviour
     /// same relative layout — so the mirror looks like the actual ship the pilot flies
     /// (including after a ship swap). Sources: the local ship when the class matches,
     /// else the fleet's ship data definition; null when neither matches.</summary>
-    private GameObject? BuildShipVisual(string shipId, Transform? liveSrc, out float halfLen)
+    private GameObject? BuildShipVisual(string shipId, Transform? liveSrc, out float halfLen, out int cloned)
     {
-        halfLen = 0f;
+        halfLen = 0f; cloned = 0;
         var root = new GameObject("mirror-ship");
-        // Source priority: explicit live override (companions) > ship DEFINITION/
-        // prefab > live local ship. The def is the stable template: a docked ship's
-        // GameObject is deactivated (0 active renderers — the empty clone), so live
-        // cloning fails at the station; the prefab always carries the visuals.
-        Transform? src = liveSrc;
+        // Prefer an ACTIVE live source (the hull only renders while flying; while
+        // docked every renderer on the ship is inactive). Fall back to the ship
+        // definition, then any live transform (companions are usually active).
+        Transform? src = null;
+        if (liveSrc != null && HasVisibleRenderer(liveSrc)) src = liveSrc;
+        var local = LocalShip();
+        var localId = CurrentShipId();
+        if (src == null && (shipId.Length == 0 || shipId == localId) && local != null
+            && HasVisibleRenderer(local.transform)) src = local.transform;
         if (src == null)
         {
             var def = GamePlayer.current?.spaceShips?.FirstOrDefault(d => d.name == shipId)?.unitDefinition;
-            if (def != null) src = def.transform;
+            if (def != null && HasVisibleRenderer(def.transform)) src = def.transform;
         }
         if (src == null)
         {
-            var local = LocalShip();
-            var localId = CurrentShipId();
-            if (shipId.Length == 0 || shipId == localId) src = local != null ? local.transform : null;
+            if (liveSrc != null) src = liveSrc;   // inactive but better than nothing
+            else if (shipId.Length == 0 || shipId == localId) src = local?.transform;
         }
         if (src == null) { Destroy(root); return null; }
         root.transform.localScale = src.lossyScale;
         var (n, hl) = CloneRenderers(root.transform, src, src);
-        halfLen = hl;
+        halfLen = hl; cloned = n;
         Log($"mirror: ship visual '{shipId}' — {n} renderers from '{src.name}'");
         return root;
     }
+
+    private static bool HasVisibleRenderer(Transform t)
+        => t != null && t.GetComponentsInChildren<Renderer>(true).Any(r => r.gameObject.activeInHierarchy);
 
     private static (int count, float halfLen) CloneRenderers(Transform dstRoot, Transform srcRoot, Transform relativeTo)
     {
@@ -543,6 +571,15 @@ public sealed class MmoSession : MonoBehaviour
         }
         foreach (var sm in srcRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)) { skinned++; }
         MmoPlugin.Instance?.LogSource.LogInfo($"[mirror] census {srcRoot.name}: spritesActive={spritesA} spritesInactive={spritesI} meshes={meshes} skinned={skinned} -> cloned {count}");
+        // Probe: the hull is often NOT a child renderer — AbstractUnit.surfaceSprite
+        // is spawned separately. Log every renderer type and the surface sprite.
+        var allR = srcRoot.GetComponentsInChildren<Renderer>(true);
+        var activeR = allR.Count(r => r.gameObject.activeInHierarchy);
+        var types = string.Join(",", allR.Take(12).Select(r => r.GetType().Name + (r.gameObject.activeInHierarchy ? "*" : "")));
+        var ss = srcRoot.GetComponent<Behaviour.Unit.AbstractUnit>();
+        var ssLine = ss == null ? "none" : (ss.surfaceSprite == null ? "surfaceSprite=null"
+            : $"surfaceSprite={ss.surfaceSprite.name} active={ss.surfaceSprite.gameObject.activeInHierarchy} parent={ss.surfaceSprite.transform.parent?.name ?? "null"}");
+        MmoPlugin.Instance?.LogSource.LogInfo($"[mirror] probe {srcRoot.name}: renderers={allR.Length} active={activeR} types=[{types}] | {ssLine}");
         return (count, halfLen);
     }
 
