@@ -29,9 +29,8 @@ public static class IconExporter
         {
             Directory.CreateDirectory(dir);
             exportScene = SceneManager.CreateScene("VGMMO Icon Export");
-            // Keys exported from WorldMapPOI prefabs below; the PoiIconLibrary loop
-            // skips these (the shipped library asset points every key at the same
-            // red-X error placeholder — NOT the real map icons).
+            // Stage the batch in memory; failed validation must not overwrite good PNGs.
+            var exports = new Dictionary<string, byte[]>();
             var prefabExported = new HashSet<string>();
             foreach (var kind in Kinds)
             {
@@ -46,17 +45,14 @@ public static class IconExporter
                         var sprite = renderers[i].sprite;
                         if (sprite == null) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind} r{i}: no sprite"); continue; }
                         MmoPlugin.Instance?.LogSource.LogInfo($"[icons] {kind} r{i}: sprite={sprite.name}, rect={sprite.rect}, bounds={sprite.bounds}, drawMode={renderers[i].drawMode}");
-                        var png = CropPng(sprite, exportScene);
-                        if (png == null) continue;
+                        var png = CropPng(sprite, exportScene, renderers[i] == prefab.spriteRenderer);
                         var path = Path.Combine(dir, kind + ".r" + i + ".png");
-                        File.WriteAllBytes(path, png);
-                        // The prefab's MAIN sprite (r0) IS the in-game map POI icon
-                        // (Map_Poi_Location_*). Publish it as the canonical Poi_<kind>
-                        // the web UI draws — the PoiIconLibrary asset is a placeholder.
+                        exports[path] = png;
+                        // Use the map prefab's main sprite, not tooltip-library art.
                         if (renderers[i] == prefab.spriteRenderer)
                         {
                             var poiPath = Path.Combine(dir, "Poi_" + kind + ".png");
-                            File.WriteAllBytes(poiPath, png);
+                            exports[poiPath] = png;
                             prefabExported.Add(kind);
                             MmoPlugin.Instance?.LogSource.LogInfo($"[icons] canonical poi icon {kind} -> {poiPath} [{sprite.name}]");
                         }
@@ -81,17 +77,13 @@ public static class IconExporter
                         continue;
                     }
                     var png = CropPng(sprite, exportScene);
-                    if (png == null) continue;
                     var path = Path.Combine(dir, "Faction_" + faction.identifier + ".png");
-                    File.WriteAllBytes(path, png);
+                    exports[path] = png;
                     MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported faction icon {faction.identifier} -> {path} (sprite '{sprite.name}')");
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] faction {faction.identifier}: {e.Message}"); }
             }
-            // Remaining POI-type icons from PoiIconLibrary (tooltip keys like Ok,
-            // Warning, Captain.*, ...) — only for keys NOT exported from prefabs above.
-            // NOTE: the shipped library asset points most keys at a shared red-X error
-            // placeholder, so anything that falls through here is not map-authentic.
+            // Tooltip/UI art is a separate source; never let it replace map POI art.
             try
             {
                 var lib = PoiIconLibrary.Instance;
@@ -99,12 +91,11 @@ public static class IconExporter
                 {
                     foreach (var entry in lib.entries)
                     {
-                        if (entry.sprite == null || prefabExported.Contains(entry.key)) continue;
+                        if (entry.sprite == null || Kinds.Contains(entry.key)) continue;
                         var png = CropPng(entry.sprite, exportScene);
-                        if (png == null) continue;
                         var key = entry.key.Replace('.', '_').Replace('/', '_');
                         var path = Path.Combine(dir, "Poi_" + key + ".png");
-                        File.WriteAllBytes(path, png);
+                        exports[path] = png;
                         MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported poi icon {entry.key} -> {path} [{entry.sprite.name}]");
                     }
                 }
@@ -114,18 +105,20 @@ public static class IconExporter
 
             // All exports happen in one frame: catch deferred-Destroy contamination
             // by rendering each main sprite again in reverse order after the batch.
+            if (prefabExported.Count != Kinds.Length)
+                throw new System.InvalidOperationException("Incomplete map POI export; keeping existing files");
             foreach (var kind in Kinds.Reverse())
             {
-                if (!prefabExported.Contains(kind)) continue;
-                var repeated = CropPng(WorldMapPOI.GetPrefab(kind).spriteRenderer.sprite, exportScene);
-                if (!File.ReadAllBytes(Path.Combine(dir, "Poi_" + kind + ".png")).SequenceEqual(repeated))
+                var repeated = CropPng(WorldMapPOI.GetPrefab(kind).spriteRenderer.sprite, exportScene, true);
+                if (!exports[Path.Combine(dir, "Poi_" + kind + ".png")].SequenceEqual(repeated))
                     throw new System.InvalidOperationException($"Render-order independence failed for {kind}");
             }
-            MmoPlugin.Instance?.LogSource.LogInfo($"[icons] render-order independence passed for {prefabExported.Count} POI icons; done.");
+            foreach (var entry in exports) File.WriteAllBytes(entry.Key, entry.Value);
+            MmoPlugin.Instance?.LogSource.LogInfo($"[icons] transparent corners and render-order independence passed for {prefabExported.Count} POI icons; done.");
         }
         catch (System.Exception e)
         {
-            MmoPlugin.Instance?.LogSource.LogWarning("[icons] export failed: " + e.Message);
+            MmoPlugin.Instance?.LogSource.LogError("[icons] export failed: " + e.Message);
         }
         finally
         {
@@ -135,7 +128,7 @@ public static class IconExporter
 
     /// <summary>Renders the sprite mesh/UVs, including packed atlas rotation, without
     /// capturing the live game or other exports. Retains the existing 2% framing margin.</summary>
-    private static byte[] CropPng(Sprite sprite, Scene exportScene)
+    private static byte[] CropPng(Sprite sprite, Scene exportScene, bool requireTransparentCorners = false)
     {
         var w = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.width));
         var h = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.height));
@@ -147,7 +140,7 @@ public static class IconExporter
         var prevActive = RenderTexture.active;
         try
         {
-            go = new GameObject("_vgmmo_icon");
+            go = new GameObject("_vgmmo_icon") { layer = 31 };
             SceneManager.MoveGameObjectToScene(go, exportScene);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = sprite;
@@ -157,6 +150,8 @@ public static class IconExporter
             cam = camGo.AddComponent<Camera>();
             cam.enabled = false;
             cam.scene = exportScene;
+            // Camera.scene alone does not exclude the live backdrop in the player.
+            cam.cullingMask = 1 << go.layer;
             cam.orthographic = true;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
@@ -174,6 +169,10 @@ public static class IconExporter
             RenderTexture.active = rt;
             crop.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
             crop.Apply();
+            if (requireTransparentCorners &&
+                (crop.GetPixel(0, 0) != Color.clear || crop.GetPixel(w - 1, 0) != Color.clear ||
+                 crop.GetPixel(0, h - 1) != Color.clear || crop.GetPixel(w - 1, h - 1) != Color.clear))
+                throw new System.InvalidOperationException($"Nontransparent map icon corners: {sprite.name}");
             return crop.EncodeToPNG();
         }
         finally
