@@ -200,18 +200,20 @@ function draw(){
     ctx.fillText('L' + s.level + ' · ' + s.id, x-26, y-34);
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
+    // Icons scale with the map fit so they stay legible at any layout size.
+    const isz = Math.max(24, Math.min(44, f.sc * 1.6));
     for (const p of s.pois){
       const [px,py]=f.px(p.x,p.y);
       const file = ICON_FILES[p.kind] || 'SpaceStation';
       const img = iconImgs[file];
       // In-game icon sprite, with the faction-color ring behind it (like the game map).
-      ctx.beginPath(); ctx.arc(px,py,9,0,Math.PI*2);
-      ctx.strokeStyle = hashColor(p.faction || p.kind); ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
+      ctx.strokeStyle = hashColor(p.faction || p.kind); ctx.lineWidth = 2.5; ctx.stroke();
       if (img && img.naturalWidth > 0){
-        ctx.drawImage(img, px-9, py-9, 18, 18);
+        ctx.drawImage(img, px-isz/2, py-isz/2, isz, isz);
       } else {
-        ctx.fillStyle = '#aab6cc'; ctx.font = '10px monospace'; ctx.textAlign='center';
-        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[p.kind] || '?'), px, py+3);
+        ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
+        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[p.kind] || '?'), px, py+isz*0.2);
         ctx.textAlign='left';
       }
     }
@@ -223,11 +225,11 @@ function draw(){
       for (const p of playersHere){
         const [px,py]=f.px(p.pos.x, p.pos.y);
         const col = hashColor(p.name);
-        ctx.beginPath(); ctx.arc(px,py,6,0,Math.PI*2);
+        ctx.beginPath(); ctx.arc(px,py,9,0,Math.PI*2);
         ctx.fillStyle = col; ctx.fill();
-        ctx.strokeStyle = '#0b0d12'; ctx.lineWidth = 2; ctx.stroke();
-        ctx.fillStyle = col; ctx.font = 'bold 10px monospace';
-        ctx.fillText(p.name, px+9, py+3);
+        ctx.strokeStyle = '#0b0d12'; ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.fillStyle = col; ctx.font = 'bold 12px monospace';
+        ctx.fillText(p.name, px+12, py+4);
       }
       if (playersHere.length > 1){
         const [px,py]=f.px(s.x,s.y);
