@@ -97,18 +97,6 @@ public sealed class WebUi
             connected = _core.ConnectedCount(),
             worlds,
             playerList = players,
-            // Every connected session (not only in-cluster ones) so the UI can list
-            // "nickname — outside MMO cluster" instead of looking inconsistent with a
-            // connected client.
-            allPlayers = _core.Sessions().Select(s => new
-            {
-                name = s.Name,
-                fullName = s.FullName,
-                title = s.Title,
-                system = s.SystemId ?? "",
-                pingMs = s.PingMs,
-                game = s.GameVersion,
-            }),
             activity = _core.Activity.Tail(30),
         };
     }
@@ -443,11 +431,8 @@ async function refresh(){
     status = data;
     const w = status.worlds[worldIdx];
     $('meta').textContent = `${status.uptimeSec}s up · in cluster ${status.players} · connected ${status.connected} · systems ${w ? w.systems.length : 0}`;
-    // All connected sessions: in-cluster players (with position), everyone else marked
-    // as outside the MMO cluster — never "none" while a client is connected.
-    const ap = status.allPlayers || [];
-    $('players').innerHTML = '<b>Players</b><br>' + (ap.map(p =>
-      `${p.name}${p.system ? ` — ${p.system} · ${p.pingMs}ms` : ' — outside MMO cluster'}`).join('<br>') || 'none');
+    $('players').innerHTML = '<b>Players</b><br>' + (status.playerList.map(p =>
+      `${p.name} — ${p.system} · ${p.pingMs}ms`).join('<br>') || 'none');
     feed(status.activity);
   } else {
     status = null;
