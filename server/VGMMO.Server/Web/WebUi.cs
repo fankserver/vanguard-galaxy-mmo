@@ -153,13 +153,12 @@ function hashColor(name){ let h=0; for (const c of name) h = (h*31 + c.codePoint
 
 function fit(world){
   const xs = [], ys = [];
-  for (const s of world.systems){ xs.push(s.x); ys.push(s.y); }
-  const pad = 60;
+  for (const s of world.systems){ xs.push(s.x); ys.push(s.y); for (const p of s.pois||[]){ xs.push(p.x); ys.push(p.y); } }
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = 70;
   const w = canvas.width = canvas.clientWidth, h = canvas.height = canvas.clientHeight;
-  const minX = Math.min(...xs) - 3, maxX = Math.max(...xs) + 3;
-  const minY = Math.min(...ys) - 3, maxY = Math.max(...ys) + 3;
-  const sx = (w - pad*2) / Math.max(1, maxX - minX), sy = (h - pad*2) / Math.max(1, maxY - minY);
-  const sc = Math.min(sx, sy);
+  const sc = Math.min((w - pad*2) / Math.max(1, maxX - minX), (h - pad*2) / Math.max(1, maxY - minY));
   const ox = w/2 - (minX + maxX)/2 * sc, oy = h/2 - (minY + maxY)/2 * sc;
   return { sc, px: (x,y) => [x*sc + ox, y*sc + oy] };
 }
@@ -181,9 +180,10 @@ function draw(){
     ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2);
     ctx.fillStyle = '#141b28'; ctx.fill();
     ctx.strokeStyle = hashColor(s.faction || s.id); ctx.lineWidth = 2.5; ctx.stroke();
-    ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace'; ctx.fillText('L' + s.level + ' · ' + s.id, x-24, y-26);
+    ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace';
+    ctx.fillText('L' + s.level + ' · ' + s.id, x-24, y-28);
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
-    ctx.fillText(s.name, x, y+4); ctx.textAlign='left';
+    ctx.fillText(s.name, x, y+24); ctx.textAlign='left';
     for (const p of s.pois){
       const [px,py]=f.px(p.x,p.y);
       ctx.fillStyle = hashColor(p.faction || p.kind);
