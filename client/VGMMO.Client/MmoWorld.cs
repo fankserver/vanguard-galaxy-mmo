@@ -147,8 +147,9 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                 }
 
                 foreach (var p in def.Pois) AddPoi(system, p);
-                system.storyteller = new ClusterStoryteller(system);
-                system.storyteller.SetupSystem();
+                // No storyteller: the game null-guards it everywhere and omits it from
+                // the save; a custom one serialized its un-resolvable type name into
+                // the save and broke every later load (SystemStoryteller.Create NRE).
                 _systems.Add(system);
             }
 
@@ -377,12 +378,4 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     {
         MmoPlugin.Instance?.Session.Log("[world] " + line);
     }
-}
-
-/// <summary>Per-system storyteller for hosted systems. Server-driven: nothing is
-/// generated locally beyond what the layout defines.</summary>
-public sealed class ClusterStoryteller : SystemStoryteller
-{
-    public ClusterStoryteller(SystemMapData system) : base(system) { }
-    public override void SetupSystem() { }
 }
