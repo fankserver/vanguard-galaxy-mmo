@@ -201,6 +201,10 @@ public sealed class SystemLeftMessage
     public string SystemId = "";
 }
 
+/// <summary>Client ship state (in-cluster only). COORDINATE FRAME (applies to
+/// everything in this protocol): positions are SYSTEM-LOCAL layout units — the game
+/// world divides by MapPointOfInterest.mapToLocalConversion (250) before sending.
+/// The web renders them as system-origin + local; servers never add an origin.</summary>
 public sealed class ShipStateMessage
 {
     public string SystemId = "";
@@ -212,7 +216,9 @@ public sealed class ShipStateMessage
     public uint Seq;
 }
 
-/// <summary>Server relay of one player's last ship state to the same-system group.</summary>
+/// <summary>Server relay of one player's last ship state to the same-system group.
+/// Positions are system-local layout units (see ShipStateMessage).</summary>
+public sealed class RemoteShipState
 public sealed class RemoteShipState
 {
     public string SessionId = "";
