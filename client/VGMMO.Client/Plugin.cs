@@ -31,7 +31,8 @@ public sealed class MmoPlugin : BaseUnityPlugin
 
         try
         {
-            HarmonyLib.Harmony.CreateAndPatchAll(typeof(SafeSetFleetPosition));
+            var harmony = new HarmonyLib.Harmony(PluginId);
+            harmony.PatchAll();
             LogSource.LogInfo("vanilla travel patches applied");
         }
         catch (Exception e) { LogSource.LogWarning("travel patch failed: " + e.Message); }

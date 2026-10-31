@@ -1,6 +1,9 @@
 using System;
+using System.Reflection;
+using Behaviour.Managers;
 using Behaviour.Unit;
 using HarmonyLib;
+using Source.Player;
 using Source.SpaceShip.Auto;
 using UnityEngine;
 
@@ -41,5 +44,49 @@ public static class SafeSetFleetPosition
             MmoPlugin.Instance?.LogSource.LogWarning("[patches] SetFleetPosition fallback: " + e.Message);
         }
         return false; // never run the original — it is the broken one
+    }
+}
+
+/// <summary>
+/// Same vanilla bug, second site: TravelManager.FixedUpdate casts a fleet ship's
+/// `autoActions as WingmanActions` unguarded and NREs every physics frame while
+/// travelling with a non-wingman fleet member — the log spanner. Null-safe replica.
+/// </summary>
+[HarmonyPatch(typeof(TravelManager), "FixedUpdate")]
+public static class SafeTravelFixedUpdate
+{
+    private static FieldInfo? _spaceShipField;
+
+    private static bool Prefix(TravelManager __instance)
+    {
+        try
+        {
+            _spaceShipField ??= typeof(TravelManager).GetField("spaceShip", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            var ship = (SpaceShip?)_spaceShipField?.GetValue(__instance);
+            if (ship == null || !ship.unitData.travelling || __instance.localTarget == null
+                || ship.IsNearWorldPosition(__instance.worldLocationToTravelTo))
+                return false; // same early-out as the vanilla guard
+
+            ship.MoveTowards(__instance.worldLocationToTravelTo);
+            foreach (var item in GamePlayer.current.activeFleet)
+            {
+                if (item.unit == null) continue;
+                var fleetShip = item.unit as SpaceShip;
+                if (fleetShip == null) continue;
+                var off = Vector2.zero;
+                if (fleetShip.autoActions != null)
+                {
+                    if (fleetShip.autoActions.leaving) continue;
+                    off = (fleetShip.autoActions as WingmanActions)?.relativeFormationPos ?? Vector2.zero;
+                }
+                item.travelSpeed = ship.spaceShipData.travelSpeed;
+                fleetShip.MoveTowards(__instance.worldLocationToTravelTo + off);
+            }
+        }
+        catch (Exception e)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[patches] TravelFixedUpdate fallback: " + e.Message);
+        }
+        return false;
     }
 }
