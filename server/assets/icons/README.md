@@ -21,8 +21,6 @@ belong underneath station icons, not baked into the POI image. Player, Amalgam,
 HolyRadicals and Independent have no map emblem.
 
 `PoiIconLibrary` supplies separate tooltip/UI art, not the five map icons above.
-`Poi_SpaceStation.v2.png` is an alternative transparent station export; the web
-UI uses `Poi_SpaceStation.png`.
 
 ## Rendering and validation
 
