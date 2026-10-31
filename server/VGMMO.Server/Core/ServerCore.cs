@@ -382,11 +382,17 @@ public sealed class ServerCore
         for (var i = 0; i < Config.GhostPilots; i++)
         {
             var sys = world.Systems[i % world.Systems.Count];
+            // Loiter AT a POI (station/field) with a slow, tight orbit: in-system
+            // travel is POI-to-POI by design, so a ghost that moves across the
+            // system is too fast to ever be seen in-game. At a POI it is visible.
+            var poi = sys.Pois.Count > 0 ? sys.Pois[i % sys.Pois.Count] : null;
+            var cx = sys.X + (poi?.X ?? 0f);
+            var cy = sys.Y + (poi?.Y ?? 0f);
             var g = new GhostPilot("g" + (i + 1), names[i % names.Length], fulls[i % fulls.Length], "Hauler",
-                sys.Id, sys.X, sys.Y, 12f + i * 2f, 8f + i, 0.2f);
+                sys.Id, cx, cy, 3f, 2.5f, 0.1f);
             _ghosts.Add(g);
             Activity.Add("join", $"{g.Name} entered {sys.Id}", sys.Id);
-            Log($"ghost pilot {g.Name} in {sys.Id}");
+            Log($"ghost pilot {g.Name} hovering {sys.Id} @ ({cx:F0},{cy:F0})");
         }
     }
 
