@@ -175,6 +175,7 @@ const canvas = $('map'), ctx = canvas.getContext('2d');
 let worlds = [], worldIdx = 0, lastActivityId = 0, status = null;
 let sysView = null;   // system id when zoomed into a system (game's two-level map), else null
 let starHits = [];    // clickable star positions for the galaxy view (refreshed per draw)
+let hoverId = null, hoverTick = 0, rafPending = false;   // galaxy hover state (WorldMapElement parity)
 // AUTHORITATIVE DATA RULE: /v1/layout (the server's world definition) is the single
 // source for ALL map content — systems, links, POIs, factions, doors. /v1/status is
 // transient live state (player positions, feed) only. The map NEVER reads from status,
@@ -267,14 +268,20 @@ function drawGalaxy(world){
   for (const s of world.systems){
     const [x,y]=f.px(s.x,s.y);
     // Star marker: glow + core, color from a stable star-class palette.
+    // Hover mirrors WorldMapElement.Update: glow tints to ColorHelper.highlightColor
+    // (gold) and breathes (scale loop around its base).
     const star = STAR_PALETTE[hashCode(s.id) % STAR_PALETTE.length];
-    const glow = ctx.createRadialGradient(x,y,2,x,y,26);
-    glow.addColorStop(0, star); glow.addColorStop(0.35, star);
+    const hovered = s.id === hoverId;
+    const pulse = hovered ? 1 + 0.14*(0.5 + 0.5*Math.sin(hoverTick*Math.PI*2/900)) : 1;
+    const gr = 26 * pulse;
+    const glowCol = hovered ? '#ffd100' : star;
+    const glow = ctx.createRadialGradient(x,y,2,x,y,gr);
+    glow.addColorStop(0, glowCol); glow.addColorStop(0.35, glowCol);
     glow.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = 0.55; ctx.fillStyle = glow;
-    ctx.beginPath(); ctx.arc(x,y,26,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = hovered ? 0.7 : 0.55; ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(x,y,gr,0,Math.PI*2); ctx.fill();
     ctx.globalAlpha = 1;
-    ctx.fillStyle = star;
+    ctx.fillStyle = glowCol;
     ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
@@ -433,11 +440,43 @@ async function refresh(){
   draw();
 }
 
+function canvasXY(e){
+  const r = canvas.getBoundingClientRect();
+  return [(e.clientX - r.left) * (canvas.width / r.width), (e.clientY - r.top) * (canvas.height / r.height)];
+}
+function starAt(cx, cy){
+  for (const h of starHits){ if (Math.hypot(h.x - cx, h.y - cy) < 22) return h; }
+  return null;
+}
 canvas.addEventListener('click', e => {
   if (sysView) return;
-  const r = canvas.getBoundingClientRect();
-  const cx = (e.clientX - r.left) * (canvas.width / r.width), cy = (e.clientY - r.top) * (canvas.height / r.height);
-  for (const h of starHits){ if (Math.hypot(h.x - cx, h.y - cy) < 22){ enterSystem(h.id); return; } }
+  const [cx,cy] = canvasXY(e);
+  const h = starAt(cx,cy);
+  if (h) enterSystem(h.id);
+});
+// Hover: gold breathing glow (in-game WorldMapElement highlight) + pointer cursor.
+function scheduleHoverAnim(){
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(ts => {
+    rafPending = false;
+    hoverTick = ts;
+    draw();
+    if (hoverId) scheduleHoverAnim();   // keep breathing while hovered
+  });
+}
+canvas.addEventListener('mousemove', e => {
+  if (sysView){ if (hoverId){ hoverId = null; canvas.style.cursor = 'default'; } return; }
+  const [cx,cy] = canvasXY(e);
+  const h = starAt(cx,cy);
+  const id = h ? h.id : null;
+  canvas.style.cursor = id ? 'pointer' : 'default';
+  if (id !== hoverId || id) scheduleHoverAnim();
+  hoverId = id;
+});
+canvas.addEventListener('mouseleave', () => {
+  hoverId = null; canvas.style.cursor = 'default';
+  scheduleHoverAnim();   // one final draw restores the base state
 });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') exitSystem(); });
 $('backbtn').addEventListener('click', exitSystem);
@@ -449,6 +488,9 @@ async function init(){
   // Deep link: /#system=<id> opens straight into the system view (also used for
   // scripted verification screenshots).
   if (location.hash.startsWith('#system=')) sysView = decodeURIComponent(location.hash.slice(8));
+  // ?hover=<id> forces the hover state (deep-link/testing aid for headless shots).
+  const hp = new URLSearchParams(location.search).get('hover');
+  if (hp){ hoverId = hp; scheduleHoverAnim(); }
   // Wait for every icon the layout needs (faction tiles) before the first paint —
   // no flash of fallback glyphs/circles while PNGs load.
   await preloadLayoutIcons(worlds);
