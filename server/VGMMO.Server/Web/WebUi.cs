@@ -97,6 +97,18 @@ public sealed class WebUi
             connected = _core.ConnectedCount(),
             worlds,
             playerList = players,
+            // Every connected session (not only in-cluster ones) so the UI can list
+            // "nickname — outside MMO cluster" instead of looking inconsistent with a
+            // connected client.
+            allPlayers = _core.Sessions().Select(s => new
+            {
+                name = s.Name,
+                fullName = s.FullName,
+                title = s.Title,
+                system = s.SystemId ?? "",
+                pingMs = s.PingMs,
+                game = s.GameVersion,
+            }),
             activity = _core.Activity.Tail(30),
         };
     }
@@ -294,7 +306,9 @@ function drawGalaxy(world){
     const playersHere = (status && status.playerList || []).filter(p => p.system === s.id && p.pos);
     if (playersHere.length){
       for (const p of playersHere){
-        const [px,py]=f.px(p.pos.x, p.pos.y);
+        // Player ship state is SYSTEM-LOCAL (client sends pos / mapToLocalConversion);
+        // on the galaxy map that anchors to the system's own layout position.
+        const [px,py]=f.px(s.x + p.pos.x, s.y + p.pos.y);
         const col = hashColor(p.name);
         ctx.beginPath(); ctx.arc(px,py,9,0,Math.PI*2);
         ctx.fillStyle = col; ctx.fill();
@@ -382,10 +396,10 @@ function drawSystemView(world, sysId){
     plate(gx,gy,'gate','gate → '+o.name,null);
   }
   if (entry){ const [ex,ey]=px(entry.hubX, entry.hubY); plate(ex,ey,'gate',entry.name||'entry',null); }
-  // Players (world pos -> local).
+  // Players: pos is system-local already (client sends local / mapToLocalConversion).
   for (const p of (status && status.playerList || [])){
     if (p.system !== s.id || !p.pos) continue;
-    const [pxc,pyc]=px(p.pos.x - s.x, p.pos.y - s.y);
+    const [pxc,pyc]=px(p.pos.x, p.pos.y);
     const col = hashColor(p.name);
     ctx.beginPath(); ctx.arc(pxc,pyc,9,0,Math.PI*2);
     ctx.fillStyle = col; ctx.fill();
@@ -428,9 +442,12 @@ async function refresh(){
   if (data){
     status = data;
     const w = status.worlds[worldIdx];
-    $('meta').textContent = `${status.uptimeSec}s up · players ${status.players} · system ${w ? w.systems.length : 0}`;
-    $('players').innerHTML = '<b>Players</b><br>' + (status.playerList.map(p =>
-      `${p.name} — ${p.system || 'warping'}${p.pos ? ` (x ${p.pos.x.toFixed(1)}, y ${p.pos.y.toFixed(1)})` : ''} · ${p.pingMs}ms`).join('<br>') || 'none');
+    $('meta').textContent = `${status.uptimeSec}s up · in cluster ${status.players} · connected ${status.connected} · systems ${w ? w.systems.length : 0}`;
+    // All connected sessions: in-cluster players (with position), everyone else marked
+    // as outside the MMO cluster — never "none" while a client is connected.
+    const ap = status.allPlayers || [];
+    $('players').innerHTML = '<b>Players</b><br>' + (ap.map(p =>
+      `${p.name}${p.system ? ` — ${p.system} · ${p.pingMs}ms` : ' — outside MMO cluster'}`).join('<br>') || 'none');
     feed(status.activity);
   } else {
     status = null;
