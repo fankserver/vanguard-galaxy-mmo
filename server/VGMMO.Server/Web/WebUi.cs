@@ -221,9 +221,14 @@ function fit(world){
   for (const s of world.systems){ xs.push(s.x); ys.push(s.y); }
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const pad = 70;
+  // pad covers the star marker AND its label (name extends ~130px right of the star),
+  // so nothing clips at the canvas edge.
+  const pad = 150;
   const w = canvas.width = canvas.clientWidth, h = canvas.height = canvas.clientHeight;
-  const sc = Math.min((w - pad*2) / Math.max(1, maxX - minX), (h - pad*2) / Math.max(1, maxY - minY));
+  // Cap the scale: sparse worlds must NOT be stretched to fill the canvas (systems
+  // ended up at the screen border, labels cut off). 6 px/unit keeps the galaxy
+  // compact like the in-game map; dense worlds still zoom out to fit.
+  const sc = Math.min(6, (w - pad*2) / Math.max(1, maxX - minX), (h - pad*2) / Math.max(1, maxY - minY));
   const ox = w/2 - (minX + maxX)/2 * sc, oy = h/2 + (minY + maxY)/2 * sc;
   // Game convention: +Y = north (up). Canvas y grows down, so invert: py = oy - y*sc.
   return { sc, px: (x,y) => [x*sc + ox, oy - y*sc] };
