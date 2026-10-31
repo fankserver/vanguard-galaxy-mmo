@@ -220,22 +220,29 @@ function draw(){
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     // Icons scale with the map fit so they stay legible at any layout size.
     const isz = Math.max(34, Math.min(64, f.sc * 2.2));
-    // In-game POI icon = the per-FACTION icon tile (FactionIconSet.mapIcon — e.g. red
-    // Kolyatov tile, rust Forge tile). Drawn EXACTLY as in game: no extra ring, natural
-    // aspect. (Entry door keeps its cyan ring as our marker.)
+    // Main icon = the POI-type icon (PoiIconLibrary, keyed per kind) drawn at its
+    // NATIVE pixel size 1:1, like in-game. Below it: the faction icon as a badge in a
+    // badge row (dark tile, stacked downward so more badges can be added later).
     function poiIcon(px, py, kind, faction, tint){
-      const file = faction ? ('Faction_' + faction) : (ICON_FILES[kind] || 'SpaceStation');
-      const img = iconFor(file);
+      const key = ICON_FILES[kind] || 'SpaceStation';
+      const img = iconFor('Poi_' + key);
       if (img && img.naturalWidth > 0){
-        const ar = img.naturalWidth / img.naturalHeight;
-        const h = isz, w = isz * ar;
-        ctx.drawImage(img, px - w/2, py - h/2, w, h);
+        ctx.drawImage(img, px - img.naturalWidth/2, py - img.naturalHeight/2);
       } else {
-        ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
+        ctx.beginPath(); ctx.arc(px,py,10,0,Math.PI*2);
         ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
-        ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
-        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+isz*0.2);
+        ctx.fillStyle = '#aab6cc'; ctx.font = '11px monospace'; ctx.textAlign='center';
+        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+4);
         ctx.textAlign='left';
+      }
+      if (faction){
+        const badge = iconFor('Faction_' + faction);
+        if (badge && badge.naturalWidth > 0){
+          const bx = px - badge.naturalWidth/2, by = py + 8 + badge.naturalHeight/2; // badge row below
+          ctx.fillStyle = '#0b0d12';
+          ctx.fillRect(bx - 1, by - badge.naturalHeight/2 - 1, badge.naturalWidth + 2, badge.naturalHeight + 2);
+          ctx.drawImage(badge, bx, by - badge.naturalHeight/2);
+        }
       }
     }
     for (const p of s.pois){

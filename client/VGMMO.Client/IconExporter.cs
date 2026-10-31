@@ -1,6 +1,7 @@
 using System.IO;
 using Behaviour.GalaxyMap;
 using Behaviour.UI;
+using Behaviour.UI.Tooltip;
 using Source.Galaxy;
 using UnityEngine;
 
@@ -62,6 +63,28 @@ public static class IconExporter
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] faction {faction.identifier}: {e.Message}"); }
             }
+            // THE POI-type icons: PoiIconLibrary (keyed, e.g. 'SpaceStation', 'Mining',
+            // 'Salvage', 'JumpGate') — what the game draws at POIs (tooltipIconKey).
+            try
+            {
+                var lib = PoiIconLibrary.Instance;
+                if (lib != null)
+                {
+                    foreach (var entry in lib.entries)
+                    {
+                        if (entry.sprite == null) continue;
+                        var png = CropPng(entry.sprite); // POI icons: raw sub-rect, 1:1
+                        if (png == null) continue;
+                        var key = entry.key.Replace('.', '_').Replace('/', '_');
+                        var path = Path.Combine(dir, "Poi_" + key + ".png");
+                        File.WriteAllBytes(path, png);
+                        MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported poi icon {entry.key} -> {path} [{entry.sprite.name}]");
+                    }
+                }
+                else MmoPlugin.Instance?.LogSource.LogWarning("[icons] PoiIconLibrary.Instance is null");
+            }
+            catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning("[icons] poi library: " + e.Message); }
+
             MmoPlugin.Instance?.LogSource.LogInfo("[icons] done.");
         }
         catch (System.Exception e)
@@ -70,7 +93,8 @@ public static class IconExporter
         }
     }
 
-    /// <summary>GPU-crops a sprite (non-readable atlas textures) into a centered PNG.
+    /// <summary>Extracts one sprite from its atlas (the game's textures are packed, so
+    /// the sub-rect MUST be cropped) at raw 1:1 pixels — no trimming, no resampling.
     /// Returns null on failure.</summary>
     private static byte[]? CropPng(Sprite sprite)
     {
@@ -89,41 +113,8 @@ public static class IconExporter
         crop.Apply();
         RenderTexture.active = prevActive;
         RenderTexture.ReleaseTemporary(rt);
-        var centered = CenterContent(crop);
+        var png = crop.EncodeToPNG();
         Object.Destroy(crop);
-        if (centered == crop) return crop.EncodeToPNG();
-        var png = centered.EncodeToPNG();
-        Object.Destroy(centered);
         return png;
-    }
-
-    /// <summary>Returns a square texture with the opaque content of `src` trimmed and
-    /// centered (transparent padding), so ring + icon align on the web map.</summary>
-    private static Texture2D CenterContent(Texture2D src)
-    {
-        var w = src.width;
-        var h = src.height;
-        var pix = src.GetPixels();
-        int minX = w, minY = h, maxX = -1, maxY = -1;
-        for (var y = 0; y < h; y++)
-            for (var x = 0; x < w; x++)
-                if (pix[y * w + x].a > 0.03f)
-                {
-                    if (x < minX) minX = x; if (x > maxX) maxX = x;
-                    if (y < minY) minY = y; if (y > maxY) maxY = y;
-                }
-        if (maxX < 0) return src; // fully transparent — keep as-is
-
-        var bw = maxX - minX + 1;
-        var bh = maxY - minY + 1;
-        var size = Mathf.Max(bw, bh) + 2;
-        var centered = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        var dst = new UnityEngine.Color[size * size];
-        for (var y = 0; y < bh; y++)
-            for (var x = 0; x < bw; x++)
-                dst[(y + (size - bh) / 2) * size + (x + (size - bw) / 2)] = pix[(minY + y) * w + (minX + x)];
-        centered.SetPixels(dst);
-        centered.Apply();
-        return centered;
     }
 }
