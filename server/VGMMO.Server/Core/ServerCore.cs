@@ -156,6 +156,13 @@ public sealed class ServerCore
 
     private void Dispatch(NetPeer peer, Session session, Envelope env)
     {
+        // Nothing before a proper Hello: join/state/loot channels must not run for
+        // a peer that skipped the handshake (build-hash + capacity gates live there).
+        if (!session.HelloReceived && env.Type != MsgTypes.Hello)
+        {
+            RefuseAndDrop(peer, "say hello first");
+            return;
+        }
         switch (env.Type)
         {
             case MsgTypes.Hello:
@@ -338,7 +345,8 @@ public sealed class ServerCore
     private void HandleEntitySnapshot(NetPeer peer, Session session, Envelope env)
     {
         var snap = Wire.Read<EntitySnapshot>(env);
-        if (snap == null || !SystemExists(snap.SystemId)) return;
+        if (snap == null || snap.SystemId != session.SystemId) return;
+        if (!SystemExists(snap.SystemId)) return;
         foreach (var target in Group(snap.SystemId))
         {
             if (target == session.PeerId) continue;
@@ -349,7 +357,8 @@ public sealed class ServerCore
     private void HandleLootSpawn(NetPeer peer, Session session, Envelope env)
     {
         var msg = Wire.Read<LootSpawnMessage>(env);
-        if (msg == null || !SystemExists(msg.SystemId)) return;
+        if (msg == null || msg.SystemId != session.SystemId) return;
+        if (!SystemExists(msg.SystemId)) return;
         var entry = Ledger.Spawn(msg);
         Broadcast(msg.SystemId, MsgTypes.LootSpawn, new LootSpawnMessage
         {
@@ -362,7 +371,9 @@ public sealed class ServerCore
     private void HandleLootTaken(NetPeer peer, Session session, Envelope env)
     {
         var msg = Wire.Read<LootTakenMessage>(env);
-        if (msg == null || !Ledger.Take(msg.InstanceId, msg.Taker.Length > 0 ? msg.Taker : session.Name)) return;
+        // The taker is the SESSION, never the wire: clients must not credit loot
+        // to a third party. Broadcast already stamps session.Name.
+        if (msg == null || !Ledger.Take(msg.InstanceId, session.Name)) return;
         BroadcastByInstance(msg.InstanceId, MsgTypes.LootGone, new LootGoneMessage { InstanceId = msg.InstanceId, Taker = session.Name });
         Activity.Add("loot", $"{session.Name} took loot {msg.InstanceId[..Math.Min(6, msg.InstanceId.Length)]}", "");
     }
