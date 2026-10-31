@@ -1,3 +1,4 @@
+using System;
 using BepInEx;
 using BepInEx.Configuration;
 using UnityEngine;
@@ -27,6 +28,13 @@ public sealed class MmoPlugin : BaseUnityPlugin
     {
         Instance = this;
         LogSource = Logger;
+
+        try
+        {
+            HarmonyLib.Harmony.CreateAndPatchAll(typeof(SafeSetFleetPosition));
+            LogSource.LogInfo("vanilla travel patches applied");
+        }
+        catch (Exception e) { LogSource.LogWarning("travel patch failed: " + e.Message); }
 
         Host = Config.Bind("server", "host", "127.0.0.1", "VGMMO server address (Windows-side 127.0.0.1 reaches the WSL2 server via localhost forwarding).");
         Port = Config.Bind("server", "port", 34567, "VGMMO server UDP port.");
