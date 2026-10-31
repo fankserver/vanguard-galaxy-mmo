@@ -54,8 +54,7 @@ public sealed class MmoSession : MonoBehaviour
     private readonly List<string> _log = new();
     private readonly Dictionary<string, GameObject> _markers = new();
     private readonly Dictionary<string, string> _markerShip = new();   // session -> cloned ship id
-    private static readonly List<string> _clonedNames = new();    private readonly Dictionary<string, GameObject> _markerLabels = new();
-
+    private readonly Dictionary<string, GameObject> _markerLabels = new();
     public IReadOnlyList<string> LogLines => _log;
 
     private void Awake()
@@ -520,10 +519,8 @@ public sealed class MmoSession : MonoBehaviour
         var halfLen = 0f;
         var relScale = relativeTo.lossyScale;
         var invRelRot = Quaternion.Inverse(relativeTo.rotation);
-        var spritesA = 0; var spritesI = 0; var meshes = 0; var skinned = 0;
         foreach (var sr in srcRoot.GetComponentsInChildren<SpriteRenderer>(true))
         {
-            if (sr.gameObject.activeInHierarchy) spritesA++; else spritesI++;
             if (sr.sprite == null) continue;
             // Hardpoint socket indicators (SpaceShipHardpoint) are UI-only: colored
             // module-size squares that are SpriteRenderer.enabled=false in flight and
@@ -553,7 +550,6 @@ public sealed class MmoSession : MonoBehaviour
         // The hull is often MeshRenderers (not sprites) — clone those too.
         foreach (var mr in srcRoot.GetComponentsInChildren<MeshRenderer>(true))
         {
-            meshes++;
             if (!mr.gameObject.activeInHierarchy) continue;
             var mf = mr.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) continue;
@@ -573,17 +569,6 @@ public sealed class MmoSession : MonoBehaviour
             halfLen = Mathf.Max(halfLen, Mathf.Abs(go.transform.localPosition.x) + mf.sharedMesh.bounds.extents.x * go.transform.localScale.x);
             count++;
         }
-        foreach (var sm in srcRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)) { skinned++; }
-        MmoPlugin.Instance?.LogSource.LogInfo($"[mirror] census {srcRoot.name}: spritesActive={spritesA} spritesInactive={spritesI} meshes={meshes} skinned={skinned} -> cloned {count}");
-        // Probe: the hull is often NOT a child renderer — AbstractUnit.surfaceSprite
-        // is spawned separately. Log every renderer type and the surface sprite.
-        var allR = srcRoot.GetComponentsInChildren<Renderer>(true);
-        var activeR = allR.Count(r => r.gameObject.activeInHierarchy);
-        var types = string.Join(",", allR.Take(12).Select(r => r.GetType().Name + (r.gameObject.activeInHierarchy ? "*" : "")));
-        var ss = srcRoot.GetComponent<Behaviour.Unit.AbstractUnit>();
-        var ssLine = ss == null ? "none" : (ss.surfaceSprite == null ? "surfaceSprite=null"
-            : $"surfaceSprite={ss.surfaceSprite.name} active={ss.surfaceSprite.gameObject.activeInHierarchy} parent={ss.surfaceSprite.transform.parent?.name ?? "null"}");
-        MmoPlugin.Instance?.LogSource.LogInfo($"[mirror] probe {srcRoot.name}: renderers={allR.Length} active={activeR} types=[{types}] | {ssLine}");
         return (count, halfLen);
     }
 
