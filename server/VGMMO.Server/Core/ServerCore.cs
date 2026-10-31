@@ -270,7 +270,7 @@ public sealed class ServerCore
                 SessionId = session.Id, Name = session.Name, SystemId = state.SystemId,
                 ShipId = state.ShipId,
                 X = state.X, Y = state.Y, Rot = state.Rot, Vx = state.Vx, Vy = state.Vy,
-                Seq = state.Seq, Ts = NowMs(),
+                Seq = state.Seq, Ts = NowMs(), Companions = state.Companions,
             }, reliable: false);
         }
         RelayShadow(session, state);
@@ -307,6 +307,12 @@ public sealed class ServerCore
             X = state.X + 0.012f,   // ~3 game units — right beside the ship (1/50 of the old 150)
             Y = state.Y,
             Rot = state.Rot, Vx = state.Vx, Vy = state.Vy, Seq = state.Seq,
+            // Companions mirror too (offset keeps them aligned with the shadow).
+            Companions = state.Companions?.Select(c => new CompanionState
+            {
+                Id = c.Id, ShipId = c.ShipId,
+                X = c.X + 0.012f, Y = c.Y, Rot = c.Rot, Vx = c.Vx, Vy = c.Vy,
+            }).ToList() ?? new List<CompanionState>(),
         };
         var rs = new RemoteShipState
         {
@@ -315,6 +321,7 @@ public sealed class ServerCore
             SystemId = _shadow.SystemId, ShipId = _shadow.State.ShipId,
             X = _shadow.State.X, Y = _shadow.State.Y, Rot = _shadow.State.Rot,
             Vx = _shadow.State.Vx, Vy = _shadow.State.Vy, Seq = _shadow.State.Seq, Ts = NowMs(),
+            Companions = _shadow.State.Companions,
         };
         // Deliberately includes the source player — the whole point is to see it.
         foreach (var target in Group(state.SystemId))

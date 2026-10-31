@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using LiteNetLib;
 using LiteNetLib.Utils;
+using Behaviour.Equipment.Module;
+using Behaviour.Unit;
 using Source.Galaxy;
 using Source.Player;
 using UnityEngine;
@@ -147,6 +149,20 @@ public sealed class MmoSession : MonoBehaviour
                 // Server frame = layout/POI-local coords (the game's own mapping:
                 // world = local * mapToLocalConversion). Authoritative on the server.
                 var scale = MapPointOfInterest.mapToLocalConversion;
+                var comps = new List<CompanionState>();
+                foreach (var f in DeployedFighters())
+                {
+                    var frb = f.GetComponent<Rigidbody2D>();
+                    if (frb == null) continue;
+                    comps.Add(new CompanionState
+                    {
+                        Id = f.unitData?.guid ?? f.name,
+                        ShipId = f.unitData?.name ?? "",
+                        X = frb.position.x / scale, Y = frb.position.y / scale,
+                        Rot = frb.rotation,
+                        Vx = frb.linearVelocity.x / scale, Vy = frb.linearVelocity.y / scale,
+                    });
+                }
                 Send(MsgTypes.ShipState, new ShipStateMessage
                 {
                     SystemId = _clusterSystem,
@@ -155,6 +171,7 @@ public sealed class MmoSession : MonoBehaviour
                     Rot = rb.rotation,
                     Vx = vel.x / scale, Vy = vel.y / scale,
                     Seq = ++_sendSeq,
+                    Companions = comps,
                 }, reliable: false);
             }
         }
@@ -170,6 +187,21 @@ public sealed class MmoSession : MonoBehaviour
         var ship = GameplayManager.Instance?.spaceShip;
         return ship?.unitData?.name ?? "";
     }
+
+    /// <summary>Deployed hangar fighters of the local carrier (if any).</summary>
+    private static List<SpaceShip> DeployedFighters()
+    {
+        var list = new List<SpaceShip>();
+        var ship = GameplayManager.Instance?.spaceShip;
+        if (ship == null) return list;
+        foreach (var bay in ship.GetComponentsInChildren<HangarBayModule>(true))
+            foreach (var f in bay.GetDeployedFighters()) list.Add(f);
+        return list;
+    }
+
+    /// <summary>Live fighter with the given unit guid (source for companion mirrors).</summary>
+    private static SpaceShip? FindLiveFighter(string guid)
+        => DeployedFighters().FirstOrDefault(f => f.unitData?.guid == guid);
 
     private static Rigidbody2D? LocalShip()
     {
@@ -314,33 +346,47 @@ public sealed class MmoSession : MonoBehaviour
 
     private void UpdateMarker(RemoteShipState rs)
     {
-        if (!_markers.TryGetValue(rs.SessionId, out var marker) || marker == null
-            || _markerShip.GetValueOrDefault(rs.SessionId) != rs.ShipId)
+        SyncMarker(rs.SessionId, rs.Name, rs.FullName, rs.Title, rs.ShipId, null,
+            rs.X, rs.Y, rs.Rot, rs.Vx, rs.Vy);
+        foreach (var c in rs.Companions ?? new List<CompanionState>())
+            SyncMarker(rs.SessionId + "#" + c.Id, null, null, null, c.ShipId,
+                FindLiveFighter(c.Id)?.transform,
+                c.X, c.Y, c.Rot, c.Vx, c.Vy);
+    }
+
+    private void SyncMarker(string key, string? name, string? fullName, string? title,
+        string shipId, Transform? liveSrc, float x, float y, float rot, float vx, float vy)
+    {
+        if (!_markers.TryGetValue(key, out var marker) || marker == null
+            || _markerShip.GetValueOrDefault(key) != shipId)
         {
             if (marker != null)
             {
                 Destroy(marker);
-                _markers.Remove(rs.SessionId);
-                _markerShip.Remove(rs.SessionId);
-                if (_markerLabels.Remove(rs.SessionId, out var old)) Destroy(old.gameObject);
+                _markers.Remove(key);
+                _markerShip.Remove(key);
+                if (_markerLabels.Remove(key, out var old)) Destroy(old.gameObject);
             }
-            CreateRemoteMarker(rs);
+            CreateRemoteMarker(key, name, fullName, title, shipId, liveSrc, x, y);
         }
-        marker = _markers.GetValueOrDefault(rs.SessionId);
+        marker = _markers.GetValueOrDefault(key);
         if (marker == null) return;
         var renderer = marker.GetComponent<Renderer>();
-        if (renderer != null) renderer.material.color = ColorFor(rs.Name);
+        if (renderer != null) renderer.material.color = ColorFor(name ?? key);
         // rs position is in server layout frame; game world = local * mapToLocalConversion.
         var scale = MapPointOfInterest.mapToLocalConversion;
-        marker.transform.position = new Vector3(rs.X * scale, rs.Y * scale, 0f);
+        marker.transform.position = new Vector3(x * scale, y * scale, 0f);
         // Direction: rot is Rigidbody2D degrees (0 = +X forward).
-        marker.transform.rotation = Quaternion.Euler(0f, 0f, rs.Rot);
-        // Keep the label upright (it would otherwise spin with the ship).
-        if (_markerLabels.TryGetValue(rs.SessionId, out var label))
+        marker.transform.rotation = Quaternion.Euler(0f, 0f, rot);
+        // Label is a sibling (never rotates with the ship); keep it above the marker.
+        if (_markerLabels.TryGetValue(key, out var label))
+        {
+            label.transform.position = marker.transform.position + new Vector3(0f, scale * 0.4f, 0f);
             label.transform.rotation = Quaternion.identity;
+        }
         // Animations are DERIVED from the transferred doing (velocity), never
         // replicated as data: the protocol carries authoritative state only.
-        var speed = Mathf.Sqrt(rs.Vx * rs.Vx + rs.Vy * rs.Vy);
+        var speed = Mathf.Sqrt(vx * vx + vy * vy);
         var flameChild = marker.transform.Find("flame");
         if (flameChild != null)
         {
@@ -349,67 +395,77 @@ public sealed class MmoSession : MonoBehaviour
             if (on)
             {
                 var k = Mathf.Clamp(speed / 8f, 0.35f, 1.6f);
-                flameChild.localScale = new Vector3(scale * 0.12f * k, scale * 0.07f * k, scale * 0.07f * k);
+                flameChild.localScale = flameChild.GetComponent<FlameSize>()?.Base * k
+                    ?? flameChild.localScale;
             }
         }
     }
 
-    private void CreateRemoteMarker(RemoteShipState rs)
+    /// <summary>Remembers the flame's base scale so the speed pulse multiplies it.</summary>
+    private sealed class FlameSize : MonoBehaviour { public Vector3 Base; }
+
+    private void CreateRemoteMarker(string key, string? name, string? fullName, string? title,
+        string shipId, Transform? liveSrc, float x, float y)
     {
-        Log($"remote player {rs.Name} appeared @ ({rs.X:F0},{rs.Y:F0}) ship '{rs.ShipId}'");
-        // Facts dump: verify the mirror frame against the game's own numbers.
-        var cur = GamePlayer.current?.currentSystem;
-        var poiLine = cur == null ? "no system" : string.Join(", ",
-            cur.pointsOfInterest.Select(p => $"{p.name}({p.position.x * MapPointOfInterest.mapToLocalConversion:F0},{p.position.y * MapPointOfInterest.mapToLocalConversion:F0})"));
-        Log($"mirror facts: conversion={MapPointOfInterest.mapToLocalConversion} rs=({rs.X:F2},{rs.Y:F2}) markerWorld=({rs.X * MapPointOfInterest.mapToLocalConversion:F0},{rs.Y * MapPointOfInterest.mapToLocalConversion:F0}) ship={LocalShip()?.position} pois=[{poiLine}]");
+        var display = fullName ?? name ?? "?";
+        if (_markers.Count < 12 || !_markerShip.ContainsKey(key))
+            Log($"remote player {display} appeared @ ({x:F0},{y:F0}) ship '{shipId}'");
         try
         {
             var u = MapPointOfInterest.mapToLocalConversion;   // 250
-            var marker = BuildShipVisual(rs.ShipId);
+            var marker = BuildShipVisual(shipId, liveSrc, out var halfLen);
             if (marker == null)
             {
-                // No ship visual available — primitive fallback with direction + flame.
                 marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 var col = marker.GetComponent<Collider>();
                 if (col != null) Destroy(col);
                 marker.transform.localScale = new Vector3(u * 0.3f, u * 0.14f, u * 0.14f);
-                var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                var fc = flame.GetComponent<Collider>();
-                if (fc != null) Destroy(fc);
-                flame.name = "flame";
-                flame.transform.SetParent(marker.transform, false);
-                flame.transform.localPosition = new Vector3(-u * 0.24f, 0f, 0f);
-                flame.transform.localScale = new Vector3(u * 0.12f, u * 0.07f, u * 0.07f);
-                flame.GetComponent<Renderer>().material.color = new Color(1f, 0.55f, 0.1f);
-                flame.SetActive(false);
+                halfLen = u * 0.15f;
             }
+            if (marker.transform.Find("flame") == null) AttachFlame(marker, halfLen);
             marker.transform.SetParent(transform, false);
-            var name = new GameObject("label").AddComponent<TextMesh>();
-            name.transform.position = Vector3.zero;
-            name.transform.SetParent(transform, false);
-            name.text = (rs.Title.Length > 0 ? rs.Title + " " : "") + (rs.FullName.Length > 0 ? rs.FullName : rs.Name);
-            name.characterSize = u * 0.035f;
-            name.fontSize = 32;
-            name.color = Color.white;
-            _markers[rs.SessionId] = marker;
-            _markerShip[rs.SessionId] = rs.ShipId;
-            _markerLabels[rs.SessionId] = name.gameObject;
+            if (name != null && fullName != null)
+            {
+                var label = new GameObject("label").AddComponent<TextMesh>();
+                label.text = (title != null && title.Length > 0 ? title + " " : "") + (fullName.Length > 0 ? fullName : name);
+                label.characterSize = u * 0.035f;
+                label.fontSize = 32;
+                label.color = Color.white;
+                label.transform.SetParent(transform, false);
+                _markerLabels[key] = label.gameObject;
+            }
+            _markers[key] = marker;
+            _markerShip[key] = shipId;
         }
         catch (System.Exception e) { Log("marker: " + e.Message); }
-        return;
+    }
+
+    private void AttachFlame(GameObject marker, float halfLen)    {
+        var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        var fc = flame.GetComponent<Collider>();
+        if (fc != null) Destroy(fc);
+        flame.name = "flame";
+        flame.transform.SetParent(marker.transform, false);
+        flame.transform.localPosition = new Vector3(-halfLen * 1.1f, 0f, 0f);
+        var s = new Vector3(halfLen * 0.22f, halfLen * 0.1f, halfLen * 0.1f);
+        flame.transform.localScale = s;
+        flame.AddComponent<FlameSize>().Base = s;
+        flame.GetComponent<Renderer>().material.color = new Color(1f, 0.55f, 0.1f);
+        flame.SetActive(false);
     }
 
     /// <summary>Builds a 1:1 visual copy of the ship identified by `shipId` — same sprites,
     /// same relative layout — so the mirror looks like the actual ship the pilot flies
     /// (including after a ship swap). Sources: the local ship when the class matches,
     /// else the fleet's ship data definition; null when neither matches.</summary>
-    private GameObject? BuildShipVisual(string shipId)
+    private GameObject? BuildShipVisual(string shipId, Transform? liveSrc, out float halfLen)
     {
+        halfLen = 0f;
         var root = new GameObject("mirror-ship");
+        Transform? src = liveSrc;
         var local = LocalShip();
         var localId = CurrentShipId();
-        Transform? src = null;
-        if (shipId.Length == 0 || shipId == localId) src = local != null ? local.transform : null;
+        if (src == null && (shipId.Length == 0 || shipId == localId)) src = local != null ? local.transform : null;
         if (src == null && shipId.Length > 0)
         {
             var def = GamePlayer.current?.spaceShips?.FirstOrDefault(d => d.name == shipId)?.unitDefinition;
@@ -417,14 +473,16 @@ public sealed class MmoSession : MonoBehaviour
         }
         if (src == null) { Destroy(root); return null; }
         root.transform.localScale = src.lossyScale;
-        var n = CloneRenderers(root.transform, src, src);
+        var (n, hl) = CloneRenderers(root.transform, src, src);
+        halfLen = hl;
         Log($"mirror: ship visual '{shipId}' — {n} sprites from '{src.name}'");
         return root;
     }
 
-    private static int CloneRenderers(Transform dstRoot, Transform srcRoot, Transform relativeTo)
+    private static (int count, float halfLen) CloneRenderers(Transform dstRoot, Transform srcRoot, Transform relativeTo)
     {
         var count = 0;
+        var halfLen = 0f;
         var relScale = relativeTo.lossyScale;
         var invRelRot = Quaternion.Inverse(relativeTo.rotation);
         foreach (var sr in srcRoot.GetComponentsInChildren<SpriteRenderer>(true))
@@ -445,9 +503,10 @@ public sealed class MmoSession : MonoBehaviour
             r.material = sr.material;
             r.drawMode = sr.drawMode;
             r.size = sr.size;
+            halfLen = Mathf.Max(halfLen, Mathf.Abs(go.transform.localPosition.x) + r.size.x * go.transform.localScale.x * 0.5f);
             count++;
         }
-        return count;
+        return (count, halfLen);
     }
 
     private static Color ColorFor(string name)

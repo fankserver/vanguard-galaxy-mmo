@@ -205,6 +205,17 @@ public sealed class SystemLeftMessage
 /// everything in this protocol): positions are SYSTEM-LOCAL layout units — the game
 /// world divides by MapPointOfInterest.mapToLocalConversion (250) before sending.
 /// The web renders them as system-origin + local; servers never add an origin.</summary>
+public sealed class CompanionState
+{
+    public string Id = "";      // stable per unit (unitData.guid)
+    public string ShipId = "";  // ship class display name (visual source)
+    public float X;
+    public float Y;
+    public float Rot;
+    public float Vx;
+    public float Vy;
+}
+
 public sealed class ShipStateMessage
 {
     public string SystemId = "";
@@ -215,6 +226,8 @@ public sealed class ShipStateMessage
     public float Vx;
     public float Vy;
     public uint Seq;
+    /// <summary>Deployed hangar fighters/drones flying with the player (carrier).</summary>
+    public List<CompanionState> Companions { get; set; } = new();
 }
 
 /// <summary>Server relay of one player's last ship state to the same-system group.
@@ -235,6 +248,8 @@ public sealed class RemoteShipState
     public float Vy;
     public uint Seq;
     public long Ts = 0;
+    /// <summary>Deployed hangar fighters/drones flying with the player.</summary>
+    public List<CompanionState> Companions { get; set; } = new();
 }
 
 /// <summary>Sim-host relay of a simulated entity (NPC/ambient ship) state.</summary>
