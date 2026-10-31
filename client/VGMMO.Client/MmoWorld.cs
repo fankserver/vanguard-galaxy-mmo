@@ -24,6 +24,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     /// the most clearance from every existing vanilla sector (GalaxyLayout allocates
     /// quadrant frames + content rects; we must not sit inside a populated one).</summary>
     private static readonly Vector2 FallbackOrigin = new(120f, 4f);
+    private static readonly float MinClusterClearance = 350f;
 
     private WorldLayout? _layout;
     private bool _built;
@@ -118,9 +119,12 @@ public sealed class MmoWorldBuilder : MonoBehaviour
 
             // Find a free spot: max clearance from every existing sector in the same
             // coordinate frame (sector positions are absolute, per the saved layout).
+            // Defer when the map isn't settled yet or no spot has enough clearance —
+            // never fall back to a hardcoded origin (it sits inside the vanilla grid).
             var clusterOrigin = FindClusterOrigin(map);
+            if (clusterOrigin == null) return;   // retried on the next Update
 
-            var sector = (SectorMapData)CreateSectorMethod.Invoke(null, new object[] { clusterOrigin, "MMO - " + _layout.Name })!;
+            var sector = (SectorMapData)CreateSectorMethod.Invoke(null, new object[] { clusterOrigin.Value, "MMO - " + _layout.Name })!;
             sector.SetIdentifier("mmo-sector-" + _layout.Id);
             map.AddSector(sector);
             _sector = sector;
@@ -256,11 +260,13 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     /// <summary>Scans the game's settled space and returns the candidate position with
     /// the greatest distance to its nearest existing sector (no overlap, guaranteed).
     /// Vanilla sectors live on a sparse grid (e.g. Xeradon Belt at (41.8, 21.3)); a naive
-    /// origin like (30,0) lands inside that grid system.</summary>
-    private static Vector2 FindClusterOrigin(GalaxyMapData map)
+    /// origin like (30,0) lands inside that grid system. Returns null when the map is not
+    /// settled yet or no candidate has enough clearance — the caller must retry, never
+    /// blind-place: FallbackOrigin (120,4) sits inside the vanilla grid.</summary>
+    private Vector2? FindClusterOrigin(GalaxyMapData map)
     {
         var sectors = map.allSectors.ToList();
-        if (sectors.Count == 0) return FallbackOrigin;
+        if (sectors.Count == 0) return null;   // map not settled yet (save load) — retry
         var best = -1f;
         var bestPos = FallbackOrigin;
         for (var x = -1400f; x <= 1500f; x += 25f)
@@ -276,6 +282,11 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                 }
                 if (minD > best) { best = minD; bestPos = c; }
             }
+        }
+        if (best < MinClusterClearance)
+        {
+            Log($"no safe cluster area yet (nearest sector {best:F0} u) — retrying");
+            return null;
         }
         Log("cluster origin " + bestPos + " (nearest sector " + best.ToString("F0") + " u)");
         return bestPos;
