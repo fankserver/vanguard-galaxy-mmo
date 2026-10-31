@@ -34,12 +34,18 @@ public sealed class WebUi
         app.MapGet("/v1/layout", () => Json(Layout()));
         app.MapGet("/v1/activity", (long? since) => Json(new { entries = _core.Activity.Since(since ?? 0, 200) }));
         // In-game POI icons (exported from the game by the client's IconExporter).
+        // No cache: the export set changes during development; always serve fresh.
         app.MapGet("/icons/{name}", (string name) =>
         {
             var safe = Path.GetFileName(name);
             var path = Path.Combine(_core.Config.AssetsDir, "icons", safe);
             if (!File.Exists(path)) return Results.NotFound();
             return Results.File(File.ReadAllBytes(path), "image/png");
+        });
+        app.Use(async (context, next) =>
+        {
+            context.Response.Headers["Cache-Control"] = "no-store";
+            await next();
         });
 
         await app.StartAsync();
@@ -220,14 +226,18 @@ function draw(){
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     // Icons scale with the map fit so they stay legible at any layout size.
     const isz = Math.max(34, Math.min(64, f.sc * 2.2));
-    // Main icon = the POI-type icon (PoiIconLibrary, keyed per kind) drawn at its
-    // NATIVE pixel size 1:1, like in-game. Below it: the faction icon as a badge in a
-    // badge row (dark tile, stacked downward so more badges can be added later).
+    // Main icon = POI-type icon, displayed like in-game: the source sprite is 16x16
+    // with transparent padding around a ~7px glyph, and the game renders it in a ~32px
+    // box — so we draw it at that display size (aspect preserved), not 1:1 CSS pixels.
+    // Badge below: faction tile at ~26px in a badge row (extensible downward).
     function poiIcon(px, py, kind, faction, tint){
       const key = ICON_FILES[kind] || 'SpaceStation';
       const img = iconFor('Poi_' + key);
       if (img && img.naturalWidth > 0){
-        ctx.drawImage(img, px - img.naturalWidth/2, py - img.naturalHeight/2);
+        const disp = Math.min(isz * 0.8, 32);
+        const ar = img.naturalWidth / img.naturalHeight;
+        const h = disp, w = disp * ar;
+        ctx.drawImage(img, px - w/2, py - h/2, w, h);
       } else {
         ctx.beginPath(); ctx.arc(px,py,10,0,Math.PI*2);
         ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
@@ -238,10 +248,13 @@ function draw(){
       if (faction){
         const badge = iconFor('Faction_' + faction);
         if (badge && badge.naturalWidth > 0){
-          const bx = px - badge.naturalWidth/2, by = py + 8 + badge.naturalHeight/2; // badge row below
+          const bs = Math.min(26, isz * 0.62);
+          const ar = badge.naturalWidth / badge.naturalHeight;
+          const bh = bs, bw = bs * ar;
+          const bx = px - bw/2, by = py + disp/2 + 6 + bh/2;   // badge row below the icon
           ctx.fillStyle = '#0b0d12';
-          ctx.fillRect(bx - 1, by - badge.naturalHeight/2 - 1, badge.naturalWidth + 2, badge.naturalHeight + 2);
-          ctx.drawImage(badge, bx, by - badge.naturalHeight/2);
+          ctx.fillRect(bx - 1, by - bh/2 - 1, bw + 2, bh + 2);
+          ctx.drawImage(badge, bx, by - bh/2, bw, bh);
         }
       }
     }
