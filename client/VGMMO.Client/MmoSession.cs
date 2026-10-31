@@ -488,6 +488,11 @@ public sealed class MmoSession : MonoBehaviour
         foreach (var sr in srcRoot.GetComponentsInChildren<SpriteRenderer>(true))
         {
             if (sr.sprite == null) continue;
+            // Only ACTIVE renderers are visible in flight — hardpoint/loadout
+            // indicators live as inactive children (they light up colored when the
+            // loadout UI is open). Cloning them made the replica show colored
+            // squares on every hardpoint that the real ship never shows.
+            if (!sr.gameObject.activeInHierarchy) continue;
             var go = new GameObject(sr.name);
             go.transform.SetParent(dstRoot, false);
             go.transform.localPosition = relativeTo.InverseTransformPoint(sr.transform.position);
