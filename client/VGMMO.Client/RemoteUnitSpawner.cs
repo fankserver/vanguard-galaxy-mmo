@@ -30,7 +30,7 @@ public static class RemoteUnitSpawner
 
     /// <summary>Creates NPC-like ship data and spawns it at the current POI.
     /// Returns null when the hull class is unknown or no POI is current.</summary>
-    public static Handle? TrySpawn(string shipId, string? fullName, string? callsignName,
+    public static Handle? TrySpawn(string shipId, string factionId, string? fullName, string? callsignName,
         string? title, string? titleColor, float x, float y)
     {
         var poi = MapPointOfInterest.currentOrNext;
@@ -39,7 +39,8 @@ public static class RemoteUnitSpawner
         if (hull == null) return null;
         try
         {
-            var data = new SpaceShipData(hull, isPlayer: false, Faction.player)
+            var faction = !string.IsNullOrEmpty(factionId) ? Faction.Get(factionId) : null;
+            var data = new SpaceShipData(hull, isPlayer: false, faction ?? Faction.player)
             {
                 autoActions = null,   // no local AI — the server drives this ship
             };

@@ -199,6 +199,7 @@ public sealed class MmoSession : MonoBehaviour
 
     private uint _sendSeq;
     private int _lastCompanionCount = -1;
+    private string _lastFaction = "";
 
     /// <summary>Ship class identity (unitData.name = definition display name). Sent so
     /// remote mirrors can pick matching visuals — and re-clone when the ship is
@@ -367,6 +368,7 @@ public sealed class MmoSession : MonoBehaviour
 
     private void UpdateMarker(RemoteShipState rs)
     {
+        _lastFaction = rs.Faction;
         SyncMarker(rs.SessionId, rs.Name, rs.FullName, rs.Title, rs.TitleColor, rs.ShipId, null,
             rs.X, rs.Y, rs.Rot, rs.Vx, rs.Vy);
         foreach (var c in rs.Companions ?? new List<CompanionState>())
@@ -475,7 +477,7 @@ public sealed class MmoSession : MonoBehaviour
             // renderer clone is only the fallback (unknown hull or no current POI).
             if (name != null && fullName != null)
             {
-                var h = RemoteUnitSpawner.TrySpawn(shipId, fullName, name, title, titleColor, x, y);
+                var h = RemoteUnitSpawner.TrySpawn(shipId, _lastFaction, fullName, name, title, titleColor, x, y);
                 if (h != null)
                 {
                     _remoteUnits[key] = h;

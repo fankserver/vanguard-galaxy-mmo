@@ -30,6 +30,7 @@ public sealed class WorldDefinition
             {
                 W(p.Id); W(p.Kind); W(p.Name); W(p.X.ToString("R")); W(p.Y.ToString("R")); W(p.Faction);
                 W(p.Level.ToString());
+                foreach (var f in p.Facilities) W(f);
             }
             foreach (var pay in s.Payloads)
             {
@@ -74,6 +75,7 @@ public sealed class PoiDef
 {
     public string Id { get; set; } = "";
     public string Kind { get; set; } = "";
+    public List<string> Facilities { get; set; } = new();
     public string Name { get; set; } = "";
     public float X { get; set; }
     public float Y { get; set; }

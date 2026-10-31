@@ -141,6 +141,9 @@ public sealed class LayoutPoi
     public string Name = "";
     public float X;
     public float Y;
+    /// <summary>Station facilities (SpaceStationFacility names) — author-defined;
+    /// empty means the client falls back to its default station set.</summary>
+    public List<string> Facilities { get; set; } = new();
     public string Faction = "";
     public int Level = 1;
 }
@@ -241,6 +244,7 @@ public sealed class RemoteShipState
     public string TitleColor = "";    // hex color of the title
     public string SystemId = "";
     public string ShipId = "";        // ship class display name — mirror visuals
+    public string Faction = "";       // server-stamped owner faction (replica spawn)
     public float X;
     public float Y;
     public float Rot;

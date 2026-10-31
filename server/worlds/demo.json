@@ -6,38 +6,116 @@
       "id": "hub-1",
       "storyId": "mmo-demo-hub",
       "name": "Hub Transit",
-      "x": 0, "y": 0, "level": 8, "faction": "Gold",
+      "x": 0,
+      "y": 0,
+      "level": 8,
+      "faction": "Gold",
       "pois": [
-        { "id": "hub-station", "kind": "station", "name": "Hub Starport", "x": 0, "y": 6, "faction": "Gold", "level": 8 }
+        {
+          "id": "hub-station",
+          "kind": "station",
+          "name": "Hub Starport",
+          "x": 0,
+          "y": 6,
+          "faction": "Gold",
+          "level": 8,
+          "facilities": [
+            "Airlock",
+            "GeneralShop",
+            "TradeTerminal",
+            "Bar",
+            "Shipyard",
+            "MissionBoard",
+            "Refinery"
+          ]
+        }
       ]
     },
     {
       "id": "mine-1",
       "storyId": "mmo-demo-mine",
       "name": "Empty Veins",
-      "x": -31, "y": 0, "level": 7, "faction": "MiningGuild",
+      "x": -31,
+      "y": 0,
+      "level": 7,
+      "faction": "MiningGuild",
       "pois": [
-        { "id": "mine-field", "kind": "mining", "name": "Ore Field", "x": -18, "y": 0, "faction": "MiningGuild", "level": 7 }
+        {
+          "id": "mine-field",
+          "kind": "mining",
+          "name": "Ore Field",
+          "x": -18,
+          "y": 0,
+          "faction": "MiningGuild",
+          "level": 7
+        }
       ]
     },
     {
       "id": "salvage-1",
       "storyId": "mmo-demo-salvage",
       "name": "Carrion Drift",
-      "x": 31, "y": -2, "level": 9, "faction": "SalvageGuild",
+      "x": 31,
+      "y": -2,
+      "level": 9,
+      "faction": "SalvageGuild",
       "pois": [
-        { "id": "salvage-wreck", "kind": "salvage", "name": "Monsoon Wreck", "x": 18, "y": -1, "faction": "SalvageGuild", "level": 9 }
+        {
+          "id": "salvage-wreck",
+          "kind": "salvage",
+          "name": "Monsoon Wreck",
+          "x": 18,
+          "y": -1,
+          "faction": "SalvageGuild",
+          "level": 9
+        }
       ]
     }
   ],
   "links": [
-    { "a": "hub-1", "b": "mine-1" },
-    { "a": "hub-1", "b": "salvage-1" }
+    {
+      "a": "hub-1",
+      "b": "mine-1"
+    },
+    {
+      "a": "hub-1",
+      "b": "salvage-1"
+    }
   ],
-  "entry": { "targetSystemId": "hub-1", "name": "MMO Gate", "sectorGate": true, "unlocked": true, "hubX": 0, "hubY": -4.5 },
+  "entry": {
+    "targetSystemId": "hub-1",
+    "name": "MMO Gate",
+    "sectorGate": true,
+    "unlocked": true,
+    "hubX": 0,
+    "hubY": -4.5
+  },
   "timeline": [
-    { "at": 8, "systemId": "hub-1", "command": "announce", "args": { "text": "Welcome to the demo hub." } },
-    { "at": 20, "systemId": "mine-1", "command": "wave", "args": { "count": 3, "shipClass": "Monsoon" } },
-    { "at": 45, "systemId": "salvage-1", "command": "loot", "args": { "itemId": "StrangeDust", "amount": 5 } }
+    {
+      "at": 8,
+      "systemId": "hub-1",
+      "command": "announce",
+      "args": {
+        "text": "Welcome to the demo hub."
+      }
+    },
+    {
+      "at": 20,
+      "systemId": "mine-1",
+      "command": "wave",
+      "args": {
+        "count": 3,
+        "shipClass": "Monsoon"
+      }
+    },
+    {
+      "at": 45,
+      "systemId": "salvage-1",
+      "command": "loot",
+      "args": {
+        "itemId": "StrangeDust",
+        "amount": 5
+      }
+    }
   ]
 }

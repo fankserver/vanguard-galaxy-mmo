@@ -393,16 +393,26 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             if (def.Kind == "station")
             {
                 var faction = def.Faction.Length == 0 ? null : Faction.Get(def.Faction);
-                var facilities = new HashSet<SpaceStationFacility>
+                // Author-defined facilities win; empty list falls back to the
+                // default station set (backward compatible with older layouts).
+                var facilities = new HashSet<SpaceStationFacility>();
+                foreach (var f in def.Facilities)
                 {
-                    SpaceStationFacility.Airlock,
-                    SpaceStationFacility.GeneralShop,
-                    SpaceStationFacility.TradeTerminal,
-                    SpaceStationFacility.Bar,
-                    SpaceStationFacility.Shipyard,
-                    SpaceStationFacility.MissionBoard,
-                    SpaceStationFacility.Refinery,
-                };
+                    if (System.Enum.TryParse<SpaceStationFacility>(f, out var fac)) facilities.Add(fac);
+                }
+                if (facilities.Count == 0)
+                {
+                    facilities.UnionWith(new[]
+                    {
+                        SpaceStationFacility.Airlock,
+                        SpaceStationFacility.GeneralShop,
+                        SpaceStationFacility.TradeTerminal,
+                        SpaceStationFacility.Bar,
+                        SpaceStationFacility.Shipyard,
+                        SpaceStationFacility.MissionBoard,
+                        SpaceStationFacility.Refinery,
+                    });
+                }
                 var station = system.AddSpaceStation(facilities, new Vector2(def.X, def.Y), faction,
                     def.Name.Length > 0 ? def.Name : def.Kind);
                 station.SetIdentifier(def.Id);
