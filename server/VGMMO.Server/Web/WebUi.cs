@@ -33,6 +33,14 @@ public sealed class WebUi
         app.MapGet("/v1/status", () => Json(Status()));
         app.MapGet("/v1/layout", () => Json(Layout()));
         app.MapGet("/v1/activity", (long? since) => Json(new { entries = _core.Activity.Since(since ?? 0, 200) }));
+        // In-game POI icons (exported from the game by the client's IconExporter).
+        app.MapGet("/icons/{name}", (string name) =>
+        {
+            var safe = Path.GetFileName(name);
+            var path = Path.Combine(_core.Config.AssetsDir, "icons", safe);
+            if (!File.Exists(path)) return Results.NotFound();
+            return Results.File(File.ReadAllBytes(path), "image/png");
+        });
 
         await app.StartAsync();
         _app = app;
@@ -151,6 +159,9 @@ public sealed class WebUi
 const $ = id => document.getElementById(id);
 const canvas = $('map'), ctx = canvas.getContext('2d');
 let worlds = [], worldIdx = 0, lastActivityId = 0, status = null;
+const ICON_FILES = {station:'SpaceStation', mining:'Mining', salvage:'Salvage', gate:'JumpGate', wormhole:'Wormhole'};
+const iconImgs = {};
+function loadIcons(){ for (const k in ICON_FILES){ const img = new Image(); img.src = '/icons/' + ICON_FILES[k] + '.png'; iconImgs[ICON_FILES[k]] = img; } }
 const PALETTE = ['#7fd4ff','#ffd27f','#7ce38b','#ff9d9d','#c9a2ff','#9ad9c0','#f0a06a','#8fb7ff'];
 
 function hashColor(name){ let h=0; for (const c of name) h = (h*31 + c.codePointAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; }
@@ -191,11 +202,18 @@ function draw(){
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     for (const p of s.pois){
       const [px,py]=f.px(p.x,p.y);
-      ctx.fillStyle = hashColor(p.faction || p.kind);
-      ctx.fillRect(px-3, py-3, 6, 6);
-      ctx.fillStyle = '#aab6cc'; ctx.font = '10px monospace';
-      const glyph = ({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[p.kind] || '?');
-      ctx.fillText(glyph, px+6, py+3);
+      const file = ICON_FILES[p.kind] || 'SpaceStation';
+      const img = iconImgs[file];
+      // In-game icon sprite, with the faction-color ring behind it (like the game map).
+      ctx.beginPath(); ctx.arc(px,py,9,0,Math.PI*2);
+      ctx.strokeStyle = hashColor(p.faction || p.kind); ctx.lineWidth = 2; ctx.stroke();
+      if (img && img.naturalWidth > 0){
+        ctx.drawImage(img, px-9, py-9, 18, 18);
+      } else {
+        ctx.fillStyle = '#aab6cc'; ctx.font = '10px monospace'; ctx.textAlign='center';
+        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[p.kind] || '?'), px, py+3);
+        ctx.textAlign='left';
+      }
     }
     // Aggregated player marker: real positions in layout coords (client sends world/250),
     // one dot per player; a count badge appears when several share the system. The old
@@ -252,6 +270,7 @@ async function refresh(){
 }
 
 async function init(){
+  loadIcons();
   const r = await fetch('/v1/layout');
   const data = await r.json(); worlds = data.worlds || [];
   if (!worlds.length) { $('meta').textContent = 'no worlds'; return; }

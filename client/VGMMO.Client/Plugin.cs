@@ -23,6 +23,7 @@ public sealed class MmoPlugin : BaseUnityPlugin
     public ConfigEntry<string> BuildHash = null!;
     public ConfigEntry<bool> AutoConnect = null!;
     public ConfigEntry<string> AutoLoadSlot = null!;
+    public ConfigEntry<string> ExportIconsPath = null!;
 
     private void Awake()
     {
@@ -44,6 +45,7 @@ public sealed class MmoPlugin : BaseUnityPlugin
         BuildHash = Config.Bind("session", "clientBuildHash", "vgmmo-night-1", "Client build identity checked by the server's accepted-hashes gate.");
         AutoConnect = Config.Bind("session", "autoConnect", true, "Connect automatically on game start.");
         AutoLoadSlot = Config.Bind("test", "autoLoadSlot", "", "Test hook: load a save copy by slot name (Saves/<slot>.save) a few seconds after boot. Empty = disabled.");
+        ExportIconsPath = Config.Bind("test", "exportIconsPath", "", "Dev hook: export galaxy-map POI icon PNGs to this folder at boot. Empty = disabled.");
 
         var go = new GameObject("VGMMO");
         DontDestroyOnLoad(go);
@@ -61,6 +63,17 @@ public sealed class MmoPlugin : BaseUnityPlugin
         {
             StartCoroutine(LoadTestSlot(AutoLoadSlot.Value));
         }
+
+        if (ExportIconsPath.Value.Length > 0)
+        {
+            StartCoroutine(ExportIcons(ExportIconsPath.Value));
+        }
+    }
+
+    private System.Collections.IEnumerator ExportIcons(string dir)
+    {
+        yield return new WaitForSeconds(2f);
+        IconExporter.Export(dir);
     }
 
     private System.Collections.IEnumerator LoadTestSlot(string slot)

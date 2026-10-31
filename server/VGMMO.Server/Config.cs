@@ -8,6 +8,7 @@ public sealed class ServerConfig
     public int WebPort { get; set; } = 8080;
     public string DataDir { get; set; } = "data";
     public string WorldsDir { get; set; } = "worlds";
+    public string AssetsDir { get; set; } = "assets";
     public int MaxPeers { get; set; } = 64;
     public int MaxPlayersPerWorld { get; set; } = 32;
     /// <summary>Accepted client-build hashes. Empty list = accept any (dev mode).</summary>
