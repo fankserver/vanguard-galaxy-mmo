@@ -1,5 +1,6 @@
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 using Behaviour.GalaxyMap;
 using Behaviour.UI;
 using Behaviour.UI.Tooltip;
@@ -60,20 +61,34 @@ public static class IconExporter
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: {e.Message}"); }
             }
-            // Real map icons: per-faction. Faction.GetIcon() is the CANONICAL source
-            // (Resources/Sprites/FactionIcons/<id>Icon) — deterministic. Do NOT use
-            // FactionIconSet.Get(): its dict is populated by Awake() from multiple
-            // same-named instances, so it nondeterministically returns wrong sheets
-            // (e.g. 'LuminateSmall' collage) depending on load order.
+            // Real map icons: per-faction. Canonical source is Resources/Sprites/
+            // FactionIcons/<id>Icon (what Faction.GetIcon() loads) — but that folder is
+            // not shipped in the player build (LoadAll returns empty). Fallback chain:
+            // all FactionIconSet instances (diagnostic log) -> non-collage mapIcon.
+            var factionFolder = Resources.LoadAll<Sprite>("Sprites/FactionIcons");
+            MmoPlugin.Instance?.LogSource.LogInfo($"[icons] FactionIcons folder contains: " + string.Join(", ", factionFolder.Select(s => s.name).Distinct()));
+            foreach (var diag in Resources.FindObjectsOfTypeAll<FactionIconSet>())
+            {
+                var mi = diag.mapIcon;
+                MmoPlugin.Instance?.LogSource.LogInfo($"[icons] FactionIconSet '{diag.name}' mapIcon='{(mi != null ? mi.name : "null")}' tiny='{(diag.tinySize != null ? diag.tinySize.name : "null")}' full='{(diag.fullSize != null ? diag.fullSize.name : "null")}'");
+            }
             foreach (Faction faction in Faction.all)
             {
                 try
                 {
-                    var sprite = faction.GetIcon();
+                    Sprite sprite = null;
+                    foreach (var set in Resources.FindObjectsOfTypeAll<FactionIconSet>())
+                    {
+                        if (set.name != faction.identifier) continue;
+                        var mi = set.mapIcon;
+                        if (mi == null || mi.name.EndsWith("Small")) continue;   // collage sheet — wrong instance
+                        sprite = mi; break;
+                    }
                     if (sprite == null)
                     {
                         var set = FactionIconSet.Get(faction);
-                        sprite = set?.mapIcon;
+                        var mi = set?.mapIcon;
+                        if (mi != null && !mi.name.EndsWith("Small")) sprite = mi;
                     }
                     // '<Shipset>Small' sprites are ship-skin collage sheets grabbed from
                     // wrong same-named FactionIconSet instances (dict filled by Awake

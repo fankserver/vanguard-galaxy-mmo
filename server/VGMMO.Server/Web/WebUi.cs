@@ -153,7 +153,7 @@ public sealed class WebUi
 <header>
   <h1>VGMMO server map</h1>
   <span id="meta">loading…</span>
-  <span id="legend" style="font-size:11px;color:#5f6d85">icons = authentic in-game sprites (all POIs) · faction emblem under stations · <span style="color:#19c8ff">●</span> players(count)</span>
+  <span id="legend" style="font-size:11px;color:#5f6d85">station/gate = in-game plates · other POIs small markers · insignia under stations · <span style="color:#19c8ff">●</span> players(count)</span>
 </header>
 <div id="layout">
   <div id="mapwrap"><canvas id="map"></canvas></div>
@@ -238,24 +238,23 @@ function drawMap(){
     ctx.fillStyle = '#141b28'; ctx.fill();
     ctx.strokeStyle = hashColor(s.faction || s.id); ctx.lineWidth = 2.5; ctx.stroke();
     labels.push({ x, y, text: 'L' + s.level + ' · ' + s.id, name: s.name });   // drawn LAST, over all plates
-    // --- FINAL ICON SET — do not swap styles again ---------------------------
-    // Every POI kind draws its AUTHENTIC in-game sprite (Map_Poi_Location_*,
-    // exported from the WorldMapPOI prefabs) at 40px — the proportion the galaxy
-    // map uses next to system circles (32px was too small for the detailed art).
-    // Station additionally gets its faction emblem below (in-game rule). The glyph
-    // circle below is only a missing-file fallback, never a substitute style.
+    // --- FINAL ICON SET — mirrors the in-game galaxy map hierarchy -------------
+    // Station & gate draw their authentic plates prominent (game size, ~1.2x the
+    // system circle); OTHER POI kinds are system-interior features the galaxy map
+    // never shows big — they render as small subordinate markers of the same
+    // authentic sprite. Faction emblem = the shipset insignia (LuminateSmall et al)
+    // at the game's ~12px. Glyph circle = missing-file fallback only.
     function poiIcon(px, py, kind, faction){
       const file = 'Poi_' + (ICON_FILES[kind] || 'SpaceStation');
-      const box = 40;
+      const box = kind === 'station' ? 40 : kind === 'gate' ? 36 : 20;
       if (loaded(file)){
-        // Soft radial glow behind the plate — the game's backgroundRenderer
-        // (radial-particle) does exactly this under every POI; without it the
-        // plates read flat/wrong against the dark map.
-        const g = ctx.createRadialGradient(px,py,4,px,py,box*0.95);
-        g.addColorStop(0,'rgba(150,185,255,0.28)');
-        g.addColorStop(1,'rgba(150,185,255,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(px,py,box*0.95,0,Math.PI*2); ctx.fill();
+        if (kind === 'station' || kind === 'gate'){
+          const g = ctx.createRadialGradient(px,py,4,px,py,box*0.95);
+          g.addColorStop(0,'rgba(150,185,255,0.28)');
+          g.addColorStop(1,'rgba(150,185,255,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(px,py,box*0.95,0,Math.PI*2); ctx.fill();
+        }
         const img = iconFor(file);
         const s = box / Math.max(img.naturalWidth, img.naturalHeight);
         ctx.drawImage(img, px - img.naturalWidth*s/2, py - img.naturalHeight*s/2,
@@ -266,7 +265,7 @@ function drawMap(){
       }
       if (kind === 'station' && faction && loaded('Faction_' + faction)){
         const badge = iconFor('Faction_' + faction);
-        const bs = 14, by = py + box/2 + 9;
+        const bs = 12, by = py + box/2 + 8;
         const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
         ctx.drawImage(badge, px - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
                       badge.naturalWidth*bsx, badge.naturalHeight*bsx);
