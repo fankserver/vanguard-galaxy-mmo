@@ -428,7 +428,7 @@ public sealed class MmoSession : MonoBehaviour
             {
                 var label = new GameObject("label").AddComponent<TextMesh>();
                 label.text = (title != null && title.Length > 0 ? title + " " : "") + (fullName.Length > 0 ? fullName : name);
-                label.characterSize = 1.2f;
+                label.characterSize = 0.4f;
                 label.fontSize = 32;
                 label.color = Color.white;
                 label.transform.SetParent(transform, false);
@@ -462,14 +462,21 @@ public sealed class MmoSession : MonoBehaviour
     {
         halfLen = 0f;
         var root = new GameObject("mirror-ship");
+        // Source priority: explicit live override (companions) > ship DEFINITION/
+        // prefab > live local ship. The def is the stable template: a docked ship's
+        // GameObject is deactivated (0 active renderers — the empty clone), so live
+        // cloning fails at the station; the prefab always carries the visuals.
         Transform? src = liveSrc;
-        var local = LocalShip();
-        var localId = CurrentShipId();
-        if (src == null && (shipId.Length == 0 || shipId == localId)) src = local != null ? local.transform : null;
-        if (src == null && shipId.Length > 0)
+        if (src == null)
         {
             var def = GamePlayer.current?.spaceShips?.FirstOrDefault(d => d.name == shipId)?.unitDefinition;
             if (def != null) src = def.transform;
+        }
+        if (src == null)
+        {
+            var local = LocalShip();
+            var localId = CurrentShipId();
+            if (shipId.Length == 0 || shipId == localId) src = local != null ? local.transform : null;
         }
         if (src == null) { Destroy(root); return null; }
         root.transform.localScale = src.lossyScale;
