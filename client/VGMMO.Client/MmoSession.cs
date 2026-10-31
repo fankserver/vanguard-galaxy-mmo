@@ -54,7 +54,7 @@ public sealed class MmoSession : MonoBehaviour
     private readonly List<string> _log = new();
     private readonly Dictionary<string, GameObject> _markers = new();
     private readonly Dictionary<string, string> _markerShip = new();   // session -> cloned ship id
-    private readonly Dictionary<string, GameObject> _markerLabels = new();
+    private static readonly List<string> _clonedNames = new();    private readonly Dictionary<string, GameObject> _markerLabels = new();
 
     public IReadOnlyList<string> LogLines => _log;
 
@@ -525,9 +525,11 @@ public sealed class MmoSession : MonoBehaviour
         {
             if (sr.gameObject.activeInHierarchy) spritesA++; else spritesI++;
             if (sr.sprite == null) continue;
-            // Only ACTIVE renderers are visible in flight — hardpoint/loadout
-            // indicators are inactive children (colored marks when the loadout UI
-            // is open); cloning them froze those marks onto the replica.
+            // Hardpoint socket indicators (SpaceShipHardpoint) are UI-only: colored
+            // module-size squares that are SpriteRenderer.enabled=false in flight and
+            // appear only on hover in the hangar UI. The game excludes them from ship
+            // renderer toggles (SetRenderersVisible) — we exclude them from the clone.
+            if (sr.GetComponent<SpaceShipHardpoint>() != null) continue;
             if (!sr.gameObject.activeInHierarchy) continue;
             var go = new GameObject(sr.name);
             go.transform.SetParent(dstRoot, false);
@@ -538,6 +540,7 @@ public sealed class MmoSession : MonoBehaviour
             var r = go.AddComponent<SpriteRenderer>();
             r.sprite = sr.sprite;
             r.color = sr.color;
+            r.enabled = sr.enabled;   // some parts are renderer-disabled (not GO-inactive)
             r.flipX = sr.flipX; r.flipY = sr.flipY;
             r.sortingLayerID = sr.sortingLayerID;
             r.sortingOrder = sr.sortingOrder;
@@ -564,6 +567,7 @@ public sealed class MmoSession : MonoBehaviour
             f.sharedMesh = mf.sharedMesh;
             var r = go.AddComponent<MeshRenderer>();
             r.sharedMaterial = mr.sharedMaterial;
+            r.enabled = mr.enabled;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             r.receiveShadows = false;
             halfLen = Mathf.Max(halfLen, Mathf.Abs(go.transform.localPosition.x) + mf.sharedMesh.bounds.extents.x * go.transform.localScale.x);
