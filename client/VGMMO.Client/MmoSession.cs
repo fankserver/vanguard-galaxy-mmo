@@ -55,6 +55,7 @@ public sealed class MmoSession : MonoBehaviour
     private readonly Dictionary<string, GameObject> _markers = new();
     private readonly Dictionary<string, string> _markerShip = new();   // session -> cloned ship id
     private readonly Dictionary<string, GameObject> _markerLabels = new();
+    private readonly Dictionary<string, Vector3> _markerLabelOff = new();
     public IReadOnlyList<string> LogLines => _log;
 
     private void Awake()
