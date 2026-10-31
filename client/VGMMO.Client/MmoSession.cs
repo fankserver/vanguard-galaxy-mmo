@@ -63,6 +63,9 @@ public sealed class MmoSession : MonoBehaviour
             if (info.Reason == DisconnectReason.Timeout) Log("server unreachable/timeout");
             else Log("disconnected: " + info.Reason);
             Status = "disconnected";
+            // Presence resets so the next reconnect re-sends JoinWorld (the server
+            // forgets our system when the session ends).
+            _inCluster = false; _clusterSystem = "";
             MmoPlugin.Instance?.World.RequestTeardown();
         };
         _listener.NetworkReceiveEvent += (peer, reader, channel, delivery) =>
@@ -118,6 +121,15 @@ public sealed class MmoSession : MonoBehaviour
                 Send(MsgTypes.LeaveWorld, new object());
                 Log("left MMO cluster");
             }
+        }
+        else if (inCluster && targetId != null && targetId != _clusterSystem)
+        {
+            // Cluster-internal travel (hub -> salvage, via gate): the server still
+            // thinks we are in the previous system — position was rendered against
+            // the wrong origin and presence groups were stale. Re-join the new one.
+            _clusterSystem = targetId;
+            Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem, FullName = _fullName, Title = _title, TitleColor = _titleColor });
+            Log($"resystem: {current!.name} ({current.storyId}) -> {_clusterSystem}");
         }
 
         _sendTimer += Time.deltaTime;
@@ -207,6 +219,7 @@ public sealed class MmoSession : MonoBehaviour
         _net?.Stop();
         Status = "disconnected";
         Log("disconnected");
+        _inCluster = false; _clusterSystem = "";
         MmoPlugin.Instance?.World.RequestTeardown();
     }
 
