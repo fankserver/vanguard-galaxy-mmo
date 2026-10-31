@@ -58,9 +58,12 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         }
 
         // Build only while connected to a server that owns the layout.
-        if (_built || _layout == null) return;
-        if (MmoPlugin.Instance == null || !MmoPlugin.Instance.Session.Connected) return;
-        Build();
+        if (!_built)
+        {
+            if (_layout == null) return;
+            if (MmoPlugin.Instance == null || !MmoPlugin.Instance.Session.Connected) return;
+            Build();
+        }
 
         // The entry gate needs a real current system; at load time it can still be
         // null, so retry on later frames until the player has one.
@@ -76,7 +79,8 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                     if (og != null)
                     {
                         _entryGates.Add((eorigin, og));
-                        Log("entry gate created from " + eorigin.name + " to " + hub.name);
+                        var t = og.GetTargetPOI();
+                        Log("entry gate created from " + eorigin.name + " to " + hub.name + " (target resolves: " + (t?.name ?? "NULL") + ")");
                     }
                 }
                 catch (Exception e) { Log("entry gate: " + e.Message); }
@@ -168,19 +172,20 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     }
 
     /// <summary>Creates a bidirectional JumpGate pair between two systems, exactly like the
-    /// vanilla helper does (public seams only): each side gets a JumpGate POI wired via
-    /// targetSystemGuid/targetPoiGuid and is unlocked. Returns the gate on `a`.</summary>
+    /// vanilla helper does (public seams only): the gate ON `a` targets `b` and the gate ON
+    /// `b` targets `a`, cross-linked via targetSystemGuid/targetPoiGuid and unlocked.
+    /// Returns the gate on `a`.</summary>
     private static JumpGate? Gate(SystemMapData a, SystemMapData b, string label)
     {
         var ga = new JumpGate();
-        ga.name = label + " -> " + b.name;
-        ga.targetSystemGuid = b.guid;
+        ga.name = label + " -> " + a.name;       // sits on b, points back at a
+        ga.targetSystemGuid = a.guid;
         b.SetupPOI(ga, b.GetRandomPosition(-20f, 20f, -5f, 5f));
         b.pointsOfInterest.Add(ga);
 
         var gb = new JumpGate();
-        gb.name = label + " -> " + a.name;
-        gb.targetSystemGuid = a.guid;
+        gb.name = label + " -> " + b.name;       // sits on a, points at b
+        gb.targetSystemGuid = b.guid;
         a.SetupPOI(gb, a.GetRandomPosition(-20f, 20f, -5f, 5f));
         a.pointsOfInterest.Add(gb);
 
