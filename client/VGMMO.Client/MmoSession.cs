@@ -428,7 +428,7 @@ public sealed class MmoSession : MonoBehaviour
             {
                 var label = new GameObject("label").AddComponent<TextMesh>();
                 label.text = (title != null && title.Length > 0 ? title + " " : "") + (fullName.Length > 0 ? fullName : name);
-                label.characterSize = u * 0.035f;
+                label.characterSize = 1.2f;
                 label.fontSize = 32;
                 label.color = Color.white;
                 label.transform.SetParent(transform, false);
@@ -475,7 +475,7 @@ public sealed class MmoSession : MonoBehaviour
         root.transform.localScale = src.lossyScale;
         var (n, hl) = CloneRenderers(root.transform, src, src);
         halfLen = hl;
-        Log($"mirror: ship visual '{shipId}' — {n} sprites from '{src.name}'");
+        Log($"mirror: ship visual '{shipId}' — {n} renderers from '{src.name}'");
         return root;
     }
 
@@ -485,13 +485,14 @@ public sealed class MmoSession : MonoBehaviour
         var halfLen = 0f;
         var relScale = relativeTo.lossyScale;
         var invRelRot = Quaternion.Inverse(relativeTo.rotation);
+        var spritesA = 0; var spritesI = 0; var meshes = 0; var skinned = 0;
         foreach (var sr in srcRoot.GetComponentsInChildren<SpriteRenderer>(true))
         {
+            if (sr.gameObject.activeInHierarchy) spritesA++; else spritesI++;
             if (sr.sprite == null) continue;
             // Only ACTIVE renderers are visible in flight — hardpoint/loadout
-            // indicators live as inactive children (they light up colored when the
-            // loadout UI is open). Cloning them made the replica show colored
-            // squares on every hardpoint that the real ship never shows.
+            // indicators are inactive children (colored marks when the loadout UI
+            // is open); cloning them froze those marks onto the replica.
             if (!sr.gameObject.activeInHierarchy) continue;
             var go = new GameObject(sr.name);
             go.transform.SetParent(dstRoot, false);
@@ -511,6 +512,30 @@ public sealed class MmoSession : MonoBehaviour
             halfLen = Mathf.Max(halfLen, Mathf.Abs(go.transform.localPosition.x) + r.size.x * go.transform.localScale.x * 0.5f);
             count++;
         }
+        // The hull is often MeshRenderers (not sprites) — clone those too.
+        foreach (var mr in srcRoot.GetComponentsInChildren<MeshRenderer>(true))
+        {
+            meshes++;
+            if (!mr.gameObject.activeInHierarchy) continue;
+            var mf = mr.GetComponent<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null) continue;
+            var go = new GameObject(mr.name);
+            go.transform.SetParent(dstRoot, false);
+            go.transform.localPosition = relativeTo.InverseTransformPoint(mr.transform.position);
+            go.transform.localRotation = invRelRot * mr.transform.rotation;
+            var ls = mr.transform.lossyScale;
+            go.transform.localScale = new Vector3(ls.x / relScale.x, ls.y / relScale.y, ls.z / relScale.z);
+            var f = go.AddComponent<MeshFilter>();
+            f.sharedMesh = mf.sharedMesh;
+            var r = go.AddComponent<MeshRenderer>();
+            r.sharedMaterial = mr.sharedMaterial;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.receiveShadows = false;
+            halfLen = Mathf.Max(halfLen, Mathf.Abs(go.transform.localPosition.x) + mf.sharedMesh.bounds.extents.x * go.transform.localScale.x);
+            count++;
+        }
+        foreach (var sm in srcRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true)) { skinned++; }
+        MmoPlugin.Instance?.LogSource.LogInfo($"[mirror] census {srcRoot.name}: spritesActive={spritesA} spritesInactive={spritesI} meshes={meshes} skinned={skinned} -> cloned {count}");
         return (count, halfLen);
     }
 
