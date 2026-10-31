@@ -30,39 +30,17 @@ public static class IconExporter
                     var prefab = WorldMapPOI.GetPrefab(kind);
                     if (prefab == null) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] no prefab for {kind}"); continue; }
                     var renderers = prefab.GetSpriteRenderers();
-                    var sprite = renderers.Count > 0 ? renderers[0].sprite : null;
-                    if (sprite == null) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: no sprite on prefab"); continue; }
-
-                    var tex = sprite.texture;
-                    var rect = sprite.textureRect;
-                    var w = Mathf.Max(1, (int)rect.width);
-                    var h = Mathf.Max(1, (int)rect.height);
-
-                    // Game textures are import-non-readable, so crop on the GPU: draw the
-                    // atlas sub-rect into a RenderTexture, then ReadPixels into an RGBA
-                    // texture (readable) and encode PNG.
-                    var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
-                    var prevActive = RenderTexture.active;
-                    RenderTexture.active = rt;
-                    GL.Clear(true, true, new Color(0f, 0f, 0f, 0f));
-                    var uv = new Rect(rect.x / tex.width, rect.y / tex.height,
-                        rect.width / tex.width, rect.height / tex.height);
-                    Graphics.DrawTexture(new Rect(0f, 0f, w, h), tex, uv, 0, 0, 0, 0, Color.white);
-                    var crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
-                    crop.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
-                    crop.Apply();
-                    RenderTexture.active = prevActive;
-                    RenderTexture.ReleaseTemporary(rt);
-
-                    // The game's atlas rects carry the glyph off-center (padding around
-                    // it); trim the alpha bounds and re-center so the ring + icon align.
-                    var centered = CenterContent(crop);
-                    Object.Destroy(crop);
-                    var png = centered.EncodeToPNG();
-                    Object.Destroy(centered);
-                    var path = Path.Combine(dir, kind + ".png");
-                    File.WriteAllBytes(path, png);
-                    MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported {kind} -> {path} ({w}x{h}, sprite '{sprite.name}')");
+                    if (renderers.Count == 0) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: no renderers on prefab"); continue; }
+                    for (var i = 0; i < renderers.Count; i++)
+                    {
+                        var sprite = renderers[i].sprite;
+                        if (sprite == null) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind} r{i}: no sprite"); continue; }
+                        var png = CropPng(sprite);
+                        if (png == null) continue;
+                        var path = Path.Combine(dir, kind + ".r" + i + ".png");
+                        File.WriteAllBytes(path, png);
+                        MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported {kind} r{i} ({(renderers[i] == prefab.spriteRenderer ? "sprite" : renderers[i] == prefab.backgroundRenderer ? "background" : "other")}) -> {path} [{sprite.name}]");
+                    }
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: {e.Message}"); }
             }

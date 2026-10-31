@@ -203,27 +203,31 @@ function draw(){
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     // Icons scale with the map fit so they stay legible at any layout size.
     const isz = Math.max(34, Math.min(64, f.sc * 2.2));
-    // Real POI icons are per-FACTION (FactionIconSet.mapIcon — what the game draws),
-    // so a gate/station/wreck on the map shows its owning faction's icon. Lazy-load;
-    // fallback: kind plates (SpaceStation etc.) then glyph.
     function iconFor(file){
       if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
       return iconImgs[file];
     }
+    // In-game POI marker = per-KIND location pin (Map_Poi_Location_*) as the main icon,
+    // with the per-FACTION shield as a small badge (bottom-right), like the game map.
     function poiIcon(px, py, kind, faction, tint){
-      const file = faction ? ('Faction_' + faction) : (ICON_FILES[kind] || 'SpaceStation');
       ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
       ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
-      const img = iconFor(file);
+      const img = iconFor(ICON_FILES[kind] || 'SpaceStation');
       if (img && img.naturalWidth > 0){
         ctx.drawImage(img, px-isz/2, py-isz/2, isz, isz);
       } else {
-        const alt = iconFor(ICON_FILES[kind] || 'SpaceStation');
-        if (alt && alt.naturalWidth > 0) ctx.drawImage(alt, px-isz/2, py-isz/2, isz, isz);
-        else {
-          ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
-          ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+isz*0.2);
-          ctx.textAlign='left';
+        ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
+        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+isz*0.2);
+        ctx.textAlign='left';
+      }
+      if (faction){
+        const badge = iconFor('Faction_' + faction);
+        if (badge && badge.naturalWidth > 0){
+          const bs = Math.round(isz*0.45);
+          const bx = px + isz*0.42, by = py + isz*0.42;
+          ctx.beginPath(); ctx.arc(bx, by, bs/2+1, 0, Math.PI*2);
+          ctx.fillStyle = '#0b0d12'; ctx.fill();
+          ctx.drawImage(badge, bx-bs/2, by-bs/2, bs, bs);
         }
       }
     }
