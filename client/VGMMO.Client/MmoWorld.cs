@@ -30,6 +30,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     private string _layoutHash = "";
     private bool _built;
     private bool _teardownPending;
+    private bool _driftPending;
 
     private SectorMapData? _sector;
     private readonly List<SystemMapData> _systems = new();
@@ -58,18 +59,32 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     /// replace it. Only safe from the non-adopt path (player is contested outside).</summary>
     private void RemoveBakedCluster(GalaxyMapData map, List<LayoutSystem> hosted)
     {
+        var removedGuids = new HashSet<string>();
         SectorMapData? sector = null;
         foreach (var def in hosted)
         {
             var sys = map.GetSystemByStoryId(def.StoryId);
             if (sys == null) continue;
             sector ??= sys.sector;
+            removedGuids.Add(sys.guid);
             foreach (var poi in sys.pointsOfInterest.ToArray())
             {
                 try { sys.RemovePointOfInterest(poi); } catch { /* already gone */ }
             }
             sys.sector?.RemoveSystem(sys);
         }
+        // Baked ENTRY gates live in vanilla systems (they persist in the save too):
+        // remove any gate pointing at a removed system, else a dead door with a
+        // dangling targetPoiGuid accumulates per drift cycle.
+        foreach (var s2 in map.allSectors)
+            foreach (var sys2 in s2.allSystems)
+                foreach (var poi in sys2.pointsOfInterest.ToArray())
+                    if (poi is Source.Galaxy.POI.JumpGate jg && jg.targetSystemGuid != null
+                        && removedGuids.Contains(jg.targetSystemGuid))
+                    {
+                        try { sys2.RemovePointOfInterest(poi); } catch { /* already gone */ }
+                        Log("removed stale baked gate '" + poi.guid + "' from " + sys2.name);
+                    }
         if (sector != null)
         {
             try { map.RemoveSector(sector); } catch { /* already gone */ }
@@ -105,8 +120,21 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             return;
         }
 
+        // Drift rebuild is deferred while the player is inside the stale cluster
+        // (same rule as teardown: never rip the world out from under them). Once
+        // they leave, the next Build removes and rebuilds the drifted layout.
+        if (_driftPending)
+        {
+            var cur = GamePlayer.current?.currentSystem;
+            if (cur == null || !IsClusterSystem(cur.storyId))
+            {
+                _driftPending = false;
+                Log("outside cluster — rebuilding drifted layout");
+            }
+        }
+
         // Build only while connected to a server that owns the layout.
-        if (!_built)
+        if (!_built && !_driftPending)
         {
             if (_layout == null) return;
             if (MmoPlugin.Instance == null || !MmoPlugin.Instance.Session.Connected) return;
@@ -157,6 +185,13 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                 var have = BakedHash(baked.sector.guid);
                 if (want.Length > 0 && have != want)
                 {
+                    var here = GamePlayer.current?.currentSystem;
+                    if (here != null && IsClusterSystem(here.storyId))
+                    {
+                        _driftPending = true;
+                        Log($"layout hash drift while inside the cluster (baked {have ?? "none"} != {want}) — rebuild deferred until outside");
+                        return;
+                    }
                     Log($"layout hash drift (baked {have ?? "none"} != {want}) — removing stale cluster");
                     RemoveBakedCluster(map, hosted);
                 }
