@@ -82,6 +82,8 @@ public sealed class WebUi
             .Select(s => new
         {
             name = s.Name,
+            fullName = s.FullName,
+            title = s.Title,
             system = s.SystemId ?? "",
             pos = s.LastPos == null ? null : new { x = s.LastPos.X, y = s.LastPos.Y, rot = s.LastPos.Rot },
             pingMs = s.PingMs,

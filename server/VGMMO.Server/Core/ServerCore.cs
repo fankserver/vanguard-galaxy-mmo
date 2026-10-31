@@ -14,7 +14,10 @@ public sealed class ServerCore
     {
         public string Id = "";
         public int PeerId;
-        public string Name = "";
+        public string Name = "";            // nickname (MMO handle)
+        public string FullName = "";        // captain GetFullName() from the save
+        public string Title = "";           // selected title display name
+        public string TitleColor = "";      // hex color of the title
         public string GameVersion = "";
         public string BuildHash = "";
         public bool HelloReceived;
@@ -206,6 +209,9 @@ public sealed class ServerCore
 
         session.HelloReceived = true;
         session.Name = SanitizeName(hello.Name);
+        session.FullName = hello.FullName;
+        session.Title = hello.Title;
+        session.TitleColor = hello.TitleColor;
         session.GameVersion = hello.GameVersion;
         session.BuildHash = hello.ClientBuildHash;
         _byId[session.Id] = session;
@@ -230,6 +236,14 @@ public sealed class ServerCore
         if (join == null || !SystemExists(join.SystemId)) { Transport?.SendPeer(session.PeerId, MsgTypes.Refused, new RefusedResponse { Reason = "unknown system" }); return; }
         LeaveGroup(session, "resystem");
         session.SystemId = join.SystemId;
+        // Identity refresh on cluster entry (captain data is loaded by then — the
+        // hello was sent at connect, before a save existed).
+        if (join.FullName.Length > 0 || join.Title.Length > 0)
+        {
+            session.FullName = join.FullName;
+            session.Title = join.Title;
+            session.TitleColor = join.TitleColor;
+        }
         Group(join.SystemId).Add(session.PeerId);
         Transport?.SendPeer(session.PeerId, MsgTypes.SystemEntered, new SystemEnteredMessage { SystemId = join.SystemId });
         Activity.Add("join", $"{session.Name} entered {join.SystemId}", join.SystemId);

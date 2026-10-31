@@ -85,7 +85,10 @@ public sealed class HelloRequest
     public int Protocol = ProtocolInfo.Version;
     public string GameVersion = "";
     public string ClientBuildHash = "";
-    public string Name = "";
+    public string Name = "";          // nickname (MMO handle) — what the web UI shows
+    public string FullName = "";      // captain GetFullName() from the save (mirror display)
+    public string Title = "";         // selected title display name (mirror display)
+    public string TitleColor = "";    // hex color of the title
 }
 
 public sealed class WelcomeResponse
@@ -181,6 +184,10 @@ public sealed class PingMessage
 public sealed class JoinWorldRequest
 {
     public string SystemId = "";
+    // Identity refresh on cluster entry (authoritative — the commander is loaded by then):
+    public string FullName = "";
+    public string Title = "";
+    public string TitleColor = "";
 }
 
 public sealed class SystemEnteredMessage
@@ -208,7 +215,10 @@ public sealed class ShipStateMessage
 public sealed class RemoteShipState
 {
     public string SessionId = "";
-    public string Name = "";
+    public string Name = "";          // nickname
+    public string FullName = "";      // captain name from the save (mirror display)
+    public string Title = "";         // selected title display name
+    public string TitleColor = "";    // hex color of the title
     public string SystemId = "";
     public float X;
     public float Y;

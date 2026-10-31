@@ -27,7 +27,10 @@ public sealed class MmoSession : MonoBehaviour
 
     private string _host = "";
     private int _port;
-    private string _name = "";
+    private string _name = "";            // nickname (MMO handle)
+    private string _fullName = "";        // captain GetFullName() from the save
+    private string _title = "";           // selected title display name
+    private string _titleColor = "";      // hex color of the title
     private string _buildHash = "";
     private string _sessionId = "";
     private bool _joined;
@@ -106,7 +109,8 @@ public sealed class MmoSession : MonoBehaviour
             if (inCluster)
             {
                 _clusterSystem = targetId!;
-                Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem });
+                RefreshIdentity();   // commander is loaded now — authoritative identity
+                Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem, FullName = _fullName, Title = _title, TitleColor = _titleColor });
                 Log($"entered MMO cluster: {current!.name} ({current.storyId}) -> join {_clusterSystem}");
             }
             else
@@ -149,6 +153,30 @@ public sealed class MmoSession : MonoBehaviour
         return gm.spaceShip.GetComponent<Rigidbody2D>();
     }
 
+    /// <summary>Reads the captain identity from the loaded save: full name (firstName
+    /// "callsign" lastName) + selected title. The hello happens at connect (often before
+    /// a save exists); the cluster-entry JoinWorld carries the authoritative identity.</summary>
+    private void RefreshIdentity()
+    {
+        var gp = GamePlayer.current;
+        if (gp?.commander == null) return;
+        try
+        {
+            _fullName = gp.commander.GetFullName();
+            var id = gp.commander.selectedTitle;
+            if (string.IsNullOrEmpty(id))
+            {
+                _title = ""; _titleColor = "";
+            }
+            else
+            {
+                _title = Titles.Get(id)?.GetDisplayName() ?? id;
+                _titleColor = "#" + ColorUtility.ToHtmlStringRGB(gp.commander.selectedTitleColor);
+            }
+        }
+        catch (System.Exception e) { Log("identity: " + e.Message); }
+    }
+
     public void Connect(string host, int port, string name, string buildHash)
     {
         if (Connected || _net == null) return;
@@ -180,12 +208,16 @@ public sealed class MmoSession : MonoBehaviour
     {
         _peer = peer;
         Status = "hello...";
+        RefreshIdentity();
         Send(MsgTypes.Hello, new HelloRequest
         {
             Protocol = ProtocolInfo.Version,
             GameVersion = Application.version,
             ClientBuildHash = _buildHash,
             Name = _name,
+            FullName = _fullName,
+            Title = _title,
+            TitleColor = _titleColor,
         });
     }
 
@@ -263,7 +295,8 @@ public sealed class MmoSession : MonoBehaviour
                 var name = new GameObject("label").AddComponent<TextMesh>();
                 name.transform.SetParent(marker.transform, false);
                 name.transform.localPosition = new Vector3(0f, 2.2f, 0f);
-                name.text = rs.Name;
+                // Other players see FULL NAME + TITLE (nickname only as fallback).
+                name.text = (rs.Title.Length > 0 ? rs.Title + " " : "") + (rs.FullName.Length > 0 ? rs.FullName : rs.Name);
                 name.characterSize = 0.18f;
                 _markers[rs.SessionId] = marker;
             }
