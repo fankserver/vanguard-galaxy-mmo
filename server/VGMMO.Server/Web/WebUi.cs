@@ -203,25 +203,34 @@ function draw(){
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     // Icons scale with the map fit so they stay legible at any layout size.
     const isz = Math.max(34, Math.min(64, f.sc * 2.2));
-    // Lets a POI icon (size-aware) with a faction ring — shared by authored POIs,
-    // functional gates and the entry door.
-    function poiIcon(px, py, kind, tint){
+    // Real POI icons are per-FACTION (FactionIconSet.mapIcon — what the game draws),
+    // so a gate/station/wreck on the map shows its owning faction's icon. Lazy-load;
+    // fallback: kind plates (SpaceStation etc.) then glyph.
+    function iconFor(file){
+      if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
+      return iconImgs[file];
+    }
+    function poiIcon(px, py, kind, faction, tint){
+      const file = faction ? ('Faction_' + faction) : (ICON_FILES[kind] || 'SpaceStation');
       ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
-      ctx.strokeStyle = tint || hashColor(kind); ctx.lineWidth = 2.5; ctx.stroke();
-      const file = ICON_FILES[kind] || 'SpaceStation';
-      const img = iconImgs[file];
+      ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
+      const img = iconFor(file);
       if (img && img.naturalWidth > 0){
         ctx.drawImage(img, px-isz/2, py-isz/2, isz, isz);
       } else {
-        ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
-        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+isz*0.2);
-        ctx.textAlign='left';
+        const alt = iconFor(ICON_FILES[kind] || 'SpaceStation');
+        if (alt && alt.naturalWidth > 0) ctx.drawImage(alt, px-isz/2, py-isz/2, isz, isz);
+        else {
+          ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
+          ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+isz*0.2);
+          ctx.textAlign='left';
+        }
       }
     }
     for (const p of s.pois){
       // POI coords are system-local; the game draws them around their system.
       const [px,py]=f.px(s.x + p.x, s.y + p.y);
-      poiIcon(px, py, p.kind, hashColor(p.faction || p.kind));
+      poiIcon(px, py, p.kind, p.faction);
     }
     // Functional doors created from the server layout: one gate icon per link endpoint
   // (server-computed local offsets: 12 units toward the peer) + the entry door.
@@ -231,7 +240,7 @@ function draw(){
     for (const [from,to] of [[la,lb],[lb,la]]){
       const dx=to.x-from.x, dy=to.y-from.y, len=Math.hypot(dx,dy)||1;
       const [gx,gy]=f.px(from.x+dx/len*12, from.y+dy/len*12);
-      poiIcon(gx, gy, 'gate', hashColor(from.faction || 'gate'));
+      poiIcon(gx, gy, 'gate', from.faction);
     }
   }
   const entry = world.entry;
@@ -239,7 +248,7 @@ function draw(){
     const target = world.systems.find(x=>x.id===entry.targetSystemId);
     if (target){
       const [ex,ey]=f.px(target.x + entry.hubX, target.y + entry.hubY);
-      poiIcon(ex, ey, 'gate', '#19c8ff');   // cyan = entry door
+      poiIcon(ex, ey, 'gate', target.faction, '#19c8ff');   // cyan = entry door
     }
   }
   // Aggregated player marker: real positions in layout coords (client sends world/250),

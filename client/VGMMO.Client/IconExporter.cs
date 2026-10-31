@@ -1,5 +1,7 @@
 using System.IO;
 using Behaviour.GalaxyMap;
+using Behaviour.UI;
+using Source.Galaxy;
 using UnityEngine;
 
 namespace VGMMO.Client;
@@ -64,12 +66,57 @@ public static class IconExporter
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: {e.Message}"); }
             }
+            // Real map icons: per-faction (FactionIconSet.mapIcon — what the in-game
+            // galaxy map actually draws at POIs). The WorldMapPOI spriteRenderer is only
+            // the location plate, which is NOT the icon.
+            foreach (Faction faction in Faction.all)
+            {
+                try
+                {
+                    var set = FactionIconSet.Get(faction);
+                    var sprite = set?.mapIcon;
+                    if (sprite == null) continue;
+                    var png = CropPng(sprite);
+                    if (png == null) continue;
+                    var path = Path.Combine(dir, "Faction_" + faction.identifier + ".png");
+                    File.WriteAllBytes(path, png);
+                    MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported faction icon {faction.identifier} -> {path} (sprite '{sprite.name}')");
+                }
+                catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] faction {faction.identifier}: {e.Message}"); }
+            }
             MmoPlugin.Instance?.LogSource.LogInfo("[icons] done.");
         }
         catch (System.Exception e)
         {
             MmoPlugin.Instance?.LogSource.LogWarning("[icons] export failed: " + e.Message);
         }
+    }
+
+    /// <summary>GPU-crops a sprite (non-readable atlas textures) into a centered PNG.
+    /// Returns null on failure.</summary>
+    private static byte[]? CropPng(Sprite sprite)
+    {
+        var tex = sprite.texture;
+        var rect = sprite.textureRect;
+        var w = Mathf.Max(1, (int)rect.width);
+        var h = Mathf.Max(1, (int)rect.height);
+        var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+        var prevActive = RenderTexture.active;
+        RenderTexture.active = rt;
+        GL.Clear(true, true, new Color(0f, 0f, 0f, 0f));
+        var uv = new Rect(rect.x / tex.width, rect.y / tex.height, rect.width / tex.width, rect.height / tex.height);
+        Graphics.DrawTexture(new Rect(0f, 0f, w, h), tex, uv, 0, 0, 0, 0, Color.white);
+        var crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        crop.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
+        crop.Apply();
+        RenderTexture.active = prevActive;
+        RenderTexture.ReleaseTemporary(rt);
+        var centered = CenterContent(crop);
+        Object.Destroy(crop);
+        if (centered == crop) return crop.EncodeToPNG();
+        var png = centered.EncodeToPNG();
+        Object.Destroy(centered);
+        return png;
     }
 
     /// <summary>Returns a square texture with the opaque content of `src` trimmed and
