@@ -27,6 +27,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     private static readonly float MinClusterClearance = 350f;
 
     private WorldLayout? _layout;
+    private string _layoutHash = "";
     private bool _built;
     private bool _teardownPending;
 
@@ -42,9 +43,46 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     private static readonly MethodInfo CreateSectorMethod = typeof(SandboxWorld)
         .GetMethod("CreateSector", BindingFlags.NonPublic | BindingFlags.Static)!;
 
-    public void SetLayout(WorldLayout? layout)
+    private string Hash8() => _layoutHash.Length >= 8 ? _layoutHash[..8] : _layoutHash;
+
+    /// <summary>Extracts the layout-hash suffix from a baked sector identifier
+    /// ("mmo-sector-<id>:<hash8>"); null for old unstamped bakes (= drift).</summary>
+    private static string? BakedHash(string? sectorGuid)
+    {
+        if (string.IsNullOrEmpty(sectorGuid)) return null;
+        var i = sectorGuid.LastIndexOf(':');
+        return i >= 0 ? sectorGuid[(i + 1)..] : null;
+    }
+
+    /// <summary>Removes a stale baked cluster (systems + sector) so a fresh build can
+    /// replace it. Only safe from the non-adopt path (player is contested outside).</summary>
+    private void RemoveBakedCluster(GalaxyMapData map, List<LayoutSystem> hosted)
+    {
+        SectorMapData? sector = null;
+        foreach (var def in hosted)
+        {
+            var sys = map.GetSystemByStoryId(def.StoryId);
+            if (sys == null) continue;
+            sector ??= sys.sector;
+            foreach (var poi in sys.pointsOfInterest.ToArray())
+            {
+                try { sys.RemovePointOfInterest(poi); } catch { /* already gone */ }
+            }
+            sys.sector?.RemoveSystem(sys);
+        }
+        if (sector != null)
+        {
+            try { map.RemoveSector(sector); } catch { /* already gone */ }
+        }
+        _systems.Clear();
+        _entryGates.Clear();
+        _sector = null;
+    }
+
+    public void SetLayout(WorldLayout? layout, string layoutHash = "")
     {
         _layout = layout;
+        _layoutHash = layoutHash;
         _built = false;
         _systems.Clear();
         _sector = null;
@@ -108,13 +146,27 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             if (map == null) return;
 
             // Idempotent: if the hosted systems already exist (reconnect, or the layout
-            // was already materialized), just adopt them.
-            if (_layout!.Systems.Any(s => s.StoryId.Length > 0 && map.GetSystemByStoryId(s.StoryId) != null))
+            // was already materialized), adopt them — unless the baked layout hash no
+            // longer matches the server's, in which case the stale cluster is removed
+            // and rebuilt below.
+            var hosted = _layout!.Systems.Where(s => s.StoryId.Length > 0).ToList();
+            var baked = hosted.Select(s => map.GetSystemByStoryId(s.StoryId)).FirstOrDefault(s => s != null);
+            if (baked != null && baked.sector != null)
             {
-                _built = true;
-                _mapRef = map;
-                Log("cluster already present — adopting (" + _layout.Systems.Count + " systems)");
-                return;
+                var want = Hash8();
+                var have = BakedHash(baked.sector.guid);
+                if (want.Length > 0 && have != want)
+                {
+                    Log($"layout hash drift (baked {have ?? "none"} != {want}) — removing stale cluster");
+                    RemoveBakedCluster(map, hosted);
+                }
+                else
+                {
+                    _built = true;
+                    _mapRef = map;
+                    Log("cluster already present — adopting (" + _layout.Systems.Count + " systems)");
+                    return;
+                }
             }
 
             // Find a free spot: max clearance from every existing sector in the same
@@ -125,7 +177,9 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             if (clusterOrigin == null) return;   // retried on the next Update
 
             var sector = (SectorMapData)CreateSectorMethod.Invoke(null, new object[] { clusterOrigin.Value, "MMO - " + _layout.Name })!;
-            sector.SetIdentifier("mmo-sector-" + _layout.Id);
+            // Stamp the baked sector with the layout hash so a later load can detect
+            // authored drift (the identifier persists in the game save).
+            sector.SetIdentifier("mmo-sector-" + _layout.Id + ":" + Hash8());
             map.AddSector(sector);
             _sector = sector;
 

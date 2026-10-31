@@ -16,7 +16,9 @@ public sealed class WorldDefinition
 
     public string ComputeLayoutHash()
     {
-        // Stable hash over the full layout: ids, positions, links, timeline.
+        // Stable hash over the FULL authored layout: ids, positions, levels, POIs
+        // (incl. level + payloads), links, entry door and timeline — everything the
+        // client materializes, so any authored change is detected by the baker.
         var sb = new System.Text.StringBuilder();
         void W(string s) { sb.Append(s.Length).Append(':').Append(s).Append('|'); }
         W(Id); W(Name);
@@ -27,11 +29,28 @@ public sealed class WorldDefinition
             foreach (var p in s.Pois.OrderBy(p => p.Id, StringComparer.Ordinal))
             {
                 W(p.Id); W(p.Kind); W(p.Name); W(p.X.ToString("R")); W(p.Y.ToString("R")); W(p.Faction);
+                W(p.Level.ToString());
+            }
+            foreach (var pay in s.Payloads)
+            {
+                W(pay.ShipClass); W(pay.Faction); W(pay.Count.ToString()); W(pay.Rank); W(pay.AutoActions);
             }
         }
         foreach (var l in Links.OrderBy(l => l.A, StringComparer.Ordinal).ThenBy(l => l.B, StringComparer.Ordinal))
         {
             W(l.A); W(l.B);
+        }
+        if (Entry != null)
+        {
+            W(Entry.Name); W(Entry.TargetSystemId); W(Entry.SectorGate.ToString()); W(Entry.Unlocked.ToString());
+            W(Entry.HubX.ToString("R")); W(Entry.HubY.ToString("R"));
+        }
+        foreach (var t in Timeline.OrderBy(t => t.At))
+        {
+            W(t.At.ToString("R")); W(t.SystemId); W(t.Command);
+            if (t.Args != null)
+                foreach (var kv in t.Args.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+                { W(kv.Key); W(kv.Value?.ToString() ?? ""); }
         }
         return System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sb.ToString()))
             .Aggregate(new System.Text.StringBuilder(), (b, x) => b.Append(x.ToString("x2"))).ToString();
