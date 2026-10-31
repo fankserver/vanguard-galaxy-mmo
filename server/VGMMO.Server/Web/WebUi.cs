@@ -153,7 +153,7 @@ public sealed class WebUi
 <header>
   <h1>VGMMO server map</h1>
   <span id="meta">loading…</span>
-  <span id="legend" style="font-size:11px;color:#5f6d85">icons = in-game map sprites · ⬛ faction emblem under stations · <span style="color:#19c8ff">●</span> players(count)</span>
+  <span id="legend" style="font-size:11px;color:#5f6d85">station = in-game sprite · ◆ mining · ☠ salvage · ⇄ gate · ◉ wormhole · emblem under stations · <span style="color:#19c8ff">●</span> players(count)</span>
 </header>
 <div id="layout">
   <div id="mapwrap"><canvas id="map"></canvas></div>
@@ -240,34 +240,31 @@ function drawMap(){
     ctx.fillText('L' + s.level + ' · ' + s.id, x-26, y-46);   // clears POI icons north of center
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
     ctx.fillText(s.name, x, y+44); ctx.textAlign='left';
-    // --- Icon presentation: mirrors the in-game galaxy map (WorldMapPOI) ---------
-    // The game draws the Map_Poi_Location_* sprite AS-IS — its dark plate is baked
-    // into the sprite; no extra frame, no label, no tint. Faction emblems appear
-    // ONLY on SpaceStation POIs (WorldMapPOI.SetContent -> poi is SpaceStation),
-    // as a small centered row BELOW the icon (FactionIconsHandler spacing 1.2).
+    // --- Icon presentation: station keeps the authentic in-game sprite (plate-free
+    // glyph) + faction emblem below — owner-approved. Other kinds render as clean
+    // glyphs in the same white style: their source sprites (Map_Poi_Location_*) are
+    // big location PLATES with baked art that turn to noise at map scale.
     function poiIcon(px, py, kind, faction){
-      const file = 'Poi_' + (ICON_FILES[kind] || 'SpaceStation');
       const box = 32;
-      if (loaded(file)){
-        const img = iconFor(file);
+      if (kind === 'station' && loaded('Poi_SpaceStation')){
+        const img = iconFor('Poi_SpaceStation');
         const s = box / Math.max(img.naturalWidth, img.naturalHeight);
         ctx.drawImage(img, px - img.naturalWidth*s/2, py - img.naturalHeight*s/2,
                       img.naturalWidth*s, img.naturalHeight*s);
-      } else {
-        ctx.beginPath(); ctx.arc(px,py,11,0,Math.PI*2);
-        ctx.strokeStyle = hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
-        ctx.fillStyle = '#aab6cc'; ctx.font = '11px monospace'; ctx.textAlign='center';
-        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+4);
-        ctx.textAlign='left';
+        if (faction && loaded('Faction_' + faction)){
+          const badge = iconFor('Faction_' + faction);
+          const bs = 14, by = py + box/2 + 9;
+          const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
+          ctx.drawImage(badge, px - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
+                        badge.naturalWidth*bsx, badge.naturalHeight*bsx);
+        }
+        return;
       }
-      // Station-only faction emblem, centered below the icon (in-game rule).
-      if (kind === 'station' && faction && loaded('Faction_' + faction)){
-        const badge = iconFor('Faction_' + faction);
-        const bs = 14, by = py + box/2 + 9;
-        const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
-        ctx.drawImage(badge, px - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
-                      badge.naturalWidth*bsx, badge.naturalHeight*bsx);
-      }
+      const glyph = ({mining:'\u25C6', salvage:'\u2620', gate:'\u21C4', wormhole:'\u25C9'})[kind] || '?';
+      ctx.fillStyle = '#dfe7f5';
+      ctx.font = 'bold 20px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(glyph, px, py + 7);
+      ctx.textAlign = 'left';
     }
     for (const p of s.pois){
       // POI coords are system-local; the game draws them around their system.
