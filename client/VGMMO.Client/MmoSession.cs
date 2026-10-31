@@ -1,6 +1,9 @@
+using System;
 using System.Collections.Generic;
 using LiteNetLib;
 using LiteNetLib.Utils;
+using Source.Galaxy;
+using Source.Player;
 using UnityEngine;
 using VGMMO.Protocol;
 
@@ -28,9 +31,14 @@ public sealed class MmoSession : MonoBehaviour
     private string _buildHash = "";
     private string _sessionId = "";
     private bool _joined;
+    private bool _inCluster;
+    private string _clusterSystem = "";
+    private readonly Dictionary<string, string> _hosted = new(StringComparer.Ordinal); // storyId -> systemId
     private float _sendTimer;
     private float _heartbeatTimer;
     private long _lastPingT;
+    private float _reconnectTimer;
+    private readonly bool _autoReconnect = true;
 
     public bool Connected => _peer != null && _peer.ConnectionState == ConnectionState.Connected;
     public string Status { get; private set; } = "disconnected";
@@ -64,6 +72,18 @@ public sealed class MmoSession : MonoBehaviour
     {
         _net?.PollEvents();
 
+        // Auto-reconnect (dev/test convenience): survive server restarts.
+        if (!Connected && _autoReconnect && _host.Length > 0)
+        {
+            _reconnectTimer += Time.deltaTime;
+            if (_reconnectTimer >= 5f)
+            {
+                _reconnectTimer = 0f;
+                try { _net.Start(); _net.Connect(_host, _port, ConnectKey); }
+                catch { /* retry next tick */ }
+            }
+        }
+
         if (!Connected) return;
 
         _heartbeatTimer += Time.deltaTime;
@@ -73,8 +93,30 @@ public sealed class MmoSession : MonoBehaviour
             Send(MsgTypes.Ping, new PingMessage { T = NowMs() });
         }
 
+        // Presence: we are only "in the MMO cluster" when the current in-game system has
+        // a storyId the server hosts. Everywhere else (vanilla systems) we stay silent.
+        var current = GamePlayer.current?.currentSystem;
+        string? targetId = null;
+        var inCluster = current != null && !string.IsNullOrEmpty(current.storyId)
+            && _hosted.TryGetValue(current.storyId, out targetId);
+        if (inCluster != _inCluster)
+        {
+            _inCluster = inCluster;
+            if (inCluster)
+            {
+                _clusterSystem = targetId!;
+                Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem });
+                Log($"entered MMO cluster: {current!.name} ({current.storyId}) -> join {_clusterSystem}");
+            }
+            else
+            {
+                Send(MsgTypes.LeaveWorld, new object());
+                Log("left MMO cluster");
+            }
+        }
+
         _sendTimer += Time.deltaTime;
-        if (_sendTimer >= SendInterval)
+        if (_sendTimer >= SendInterval && _inCluster)
         {
             _sendTimer = 0f;
             var rb = LocalShip();
@@ -84,7 +126,7 @@ public sealed class MmoSession : MonoBehaviour
                 var vel = rb.linearVelocity;
                 Send(MsgTypes.ShipState, new ShipStateMessage
                 {
-                    SystemId = _joined ? MmoPlugin.Instance?.StartSystem.Value ?? "" : "",
+                    SystemId = _clusterSystem,
                     X = pos.x, Y = pos.y,
                     Rot = rb.rotation,
                     Vx = vel.x, Vy = vel.y,
@@ -150,8 +192,10 @@ public sealed class MmoSession : MonoBehaviour
                 var w = Wire.Read<WelcomeResponse>(env);
                 _sessionId = w?.SessionId ?? "";
                 Status = "joined world " + (w?.WorldId ?? "?");
-                Log($"welcome: session {_sessionId} world {w?.WorldId} (layout {w?.LayoutHash?[..12]})");
-                Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = MmoPlugin.Instance?.StartSystem.Value ?? "" });
+                _hosted.Clear();
+                foreach (var s in w?.Systems ?? new List<WelcomeSystem>())
+                    if (!string.IsNullOrEmpty(s.StoryId)) _hosted[s.StoryId] = s.Id;
+                Log($"welcome: session {_sessionId} world {w?.WorldId} (layout {w?.LayoutHash?[..12]}) hosted {_hosted.Count} systems");
                 break;
             case MsgTypes.SystemEntered:
                 var se = Wire.Read<SystemEnteredMessage>(env);

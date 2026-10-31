@@ -95,6 +95,15 @@ public sealed class WelcomeResponse
     public string WorldName = "";
     public long ServerTimeMs = 0;
     public string LayoutHash = "";
+    /// <summary>Hosted systems: storyId -> system id. A client is "in the MMO cluster"
+    /// when its current in-game system's storyId is in here.</summary>
+    public List<WelcomeSystem> Systems { get; set; } = new();
+}
+
+public sealed class WelcomeSystem
+{
+    public string Id = "";
+    public string StoryId = "";
 }
 
 public sealed class RefusedResponse

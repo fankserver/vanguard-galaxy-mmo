@@ -145,6 +145,8 @@ public static class SelfTest
             alice.Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = "hub-1" });
             Check("join/system-entered", alice.Receive(MsgTypes.SystemEntered, 2000) != null);
             Check("core-session", core.ActivePlayerCount() == 1);
+            // Presence gate: a connected-but-not-in-cluster client is NOT "available".
+            Check("presence-gate", core.ActivePlayerCount() == 1 && core.ConnectedCount() == 1);
 
             // C4: bob joins same system
             bob.Connect(transport.Port);

@@ -63,7 +63,9 @@ public sealed class WebUi
                 players = groups.GetValueOrDefault(s.Id) ?? new List<string>(),
             }),
         });
-        var players = _core.Sessions().Select(s => new
+        var players = _core.Sessions()
+            .Where(s => s.SystemId != null)
+            .Select(s => new
         {
             name = s.Name,
             system = s.SystemId ?? "",
@@ -76,6 +78,7 @@ public sealed class WebUi
             uptimeSec = (long)(DateTime.UtcNow - _core.StartedAt).TotalSeconds,
             nowMs = ServerCore.NowMs(),
             players = _core.ActivePlayerCount(),
+            connected = _core.ConnectedCount(),
             worlds,
             playerList = players,
             activity = _core.Activity.Tail(30),

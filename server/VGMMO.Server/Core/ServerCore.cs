@@ -218,6 +218,7 @@ public sealed class ServerCore
             WorldName = world.Name,
             ServerTimeMs = NowMs(),
             LayoutHash = world.ComputeLayoutHash(),
+            Systems = world.Systems.Select(s => new WelcomeSystem { Id = s.Id, StoryId = s.StoryId }).Where(s => s.StoryId.Length > 0).ToList(),
         });
         Log($"hello: {session.Name} (game {session.GameVersion}, build {HelloTrim(session.BuildHash)}) -> {session.Id}");
     }
@@ -395,6 +396,12 @@ public sealed class ServerCore
     // ---------- queries (web) ----------
 
     public int ActivePlayerCount()
+    {
+        // "Available" = in the MMO cluster, not merely connected.
+        lock (_gate) return _byId.Values.Count(s => s.SystemId != null);
+    }
+
+    public int ConnectedCount()
     {
         lock (_gate) return _byId.Count;
     }
