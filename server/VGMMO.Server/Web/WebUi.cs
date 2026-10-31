@@ -207,18 +207,15 @@ function draw(){
       if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
       return iconImgs[file];
     }
-    // In-game POI icon = the per-FACTION shield (small, colorful — see the galaxy map
-    // screenshots). Aspect ratio preserved; no pin/wedge layers. The Map_Poi_Location_*
-    // plates are decoration only (the gate one is literally a quarter wedge).
+    // In-game POI icon = the per-FACTION icon tile (FactionIconSet.mapIcon — e.g. red
+    // Kolyatov tile, rust Forge tile). Drawn EXACTLY as in game: no extra ring, natural
+    // aspect. (Entry door keeps its cyan ring as our marker.)
     function poiIcon(px, py, kind, faction, tint){
       const file = faction ? ('Faction_' + faction) : (ICON_FILES[kind] || 'SpaceStation');
       const img = iconFor(file);
       if (img && img.naturalWidth > 0){
         const ar = img.naturalWidth / img.naturalHeight;
         const h = isz, w = isz * ar;
-        const rr = Math.max(w, h) / 2 + 2;
-        ctx.beginPath(); ctx.arc(px, py, rr, 0, Math.PI*2);
-        ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
         ctx.drawImage(img, px - w/2, py - h/2, w, h);
       } else {
         ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
