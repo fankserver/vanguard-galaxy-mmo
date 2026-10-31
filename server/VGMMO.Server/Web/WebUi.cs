@@ -163,6 +163,23 @@ let worlds = [], worldIdx = 0, lastActivityId = 0, status = null;
 const ICON_FILES = {station:'SpaceStation', mining:'Mining', salvage:'Salvage', gate:'JumpGate', wormhole:'Wormhole'};
 const iconImgs = {};
 function loadIcons(){ for (const k in ICON_FILES){ const img = new Image(); img.src = '/icons/' + ICON_FILES[k] + '.png'; iconImgs[ICON_FILES[k]] = img; } }
+function iconFor(file){
+  if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
+  return iconImgs[file];
+}
+function loaded(file){ const i = iconImgs[file]; return i && (i.complete && i.naturalWidth > 0); }
+function preloadLayoutIcons(worldsData){
+  const files = new Set();
+  for (const w of worldsData){
+    const byId = Object.fromEntries((w.systems||[]).map(s => [s.id, s]));
+    for (const s of w.systems||[]){
+      for (const p of s.pois||[]){ if (p.faction) files.add('Faction_' + p.faction); }
+    }
+    if (w.entry && byId[w.entry.targetSystemId] && byId[w.entry.targetSystemId].faction) files.add('Faction_' + byId[w.entry.targetSystemId].faction);
+  }
+  const imgs = [...files].map(f => iconFor(f));
+  return Promise.all(imgs.map(i => new Promise(res => { if (i.complete) res(); else { i.onload = () => res(); i.onerror = () => res(); } })));
+}
 const PALETTE = ['#7fd4ff','#ffd27f','#7ce38b','#ff9d9d','#c9a2ff','#9ad9c0','#f0a06a','#8fb7ff'];
 
 function hashColor(name){ let h=0; for (const c of name) h = (h*31 + c.codePointAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; }
@@ -203,10 +220,6 @@ function draw(){
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     // Icons scale with the map fit so they stay legible at any layout size.
     const isz = Math.max(34, Math.min(64, f.sc * 2.2));
-    function iconFor(file){
-      if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
-      return iconImgs[file];
-    }
     // In-game POI icon = the per-FACTION icon tile (FactionIconSet.mapIcon — e.g. red
     // Kolyatov tile, rust Forge tile). Drawn EXACTLY as in game: no extra ring, natural
     // aspect. (Entry door keeps its cyan ring as our marker.)
@@ -308,6 +321,9 @@ async function init(){
   const r = await fetch('/v1/layout');
   const data = await r.json(); worlds = data.worlds || [];
   if (!worlds.length) { $('meta').textContent = 'no worlds'; return; }
+  // Wait for every icon the layout needs (faction tiles) before the first paint —
+  // no flash of fallback glyphs/circles while PNGs load.
+  await preloadLayoutIcons(worlds);
   setInterval(refresh, 2000);
   refresh();
 }
