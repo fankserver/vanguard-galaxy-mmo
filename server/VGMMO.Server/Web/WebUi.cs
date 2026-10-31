@@ -333,7 +333,15 @@ async function refresh(){
       `${p.name} — ${p.system || 'warping'}${p.pos ? ` (x ${p.pos.x.toFixed(1)}, y ${p.pos.y.toFixed(1)})` : ''} · ${p.pingMs}ms`).join('<br>') || 'none');
     feed(status.activity);
     draw();
-  } catch(e) { $('meta').textContent = 'server unreachable'; }
+  } catch(e) {
+    // Server down: still redraw the FULL layout (systems/gates/POIs/badges come from
+    // the layout, not the status). Only player dots need the live server. No frozen
+    // partial frames — the map is always complete, with an explicit offline banner.
+    status = null;
+    $('meta').textContent = 'server unreachable — layout only (no live players)';
+    $('players').innerHTML = '<b>Players</b><br>n/a — server unreachable';
+    draw();
+  }
 }
 
 async function init(){
