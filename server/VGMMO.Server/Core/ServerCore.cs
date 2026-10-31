@@ -370,8 +370,8 @@ public sealed class ServerCore
     {
         Log($"dropping {s.Name} ({reason})");
         if (s.SystemId != null) LeaveGroup(s, "drop");
-        // Always record the disappearance: the peer-disconnect callback cannot (the
-        // session is gone by then), which previously left the feed silent on timeouts.
+        // Record the disappearance here — the peer-disconnect callback can't (the
+        // session is gone by then).
         Activity.Add("leave", $"{s.Name} disconnected ({reason})", s.SystemId ?? "");
         _byPeer.Remove(s.PeerId);
         _byId.Remove(s.Id);

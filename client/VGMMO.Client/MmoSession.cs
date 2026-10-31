@@ -113,7 +113,7 @@ public sealed class MmoSession : MonoBehaviour
             {
                 _clusterSystem = targetId!;
                 RefreshIdentity();   // commander is loaded now — authoritative identity
-                Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem, FullName = _fullName, Title = _title, TitleColor = _titleColor });
+                Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem, Name = _name, FullName = _fullName, Title = _title, TitleColor = _titleColor });
                 Log($"entered MMO cluster: {current!.name} ({current.storyId}) -> join {_clusterSystem}");
             }
             else
@@ -128,7 +128,7 @@ public sealed class MmoSession : MonoBehaviour
             // thinks we are in the previous system — position was rendered against
             // the wrong origin and presence groups were stale. Re-join the new one.
             _clusterSystem = targetId;
-            Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem, FullName = _fullName, Title = _title, TitleColor = _titleColor });
+            Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = _clusterSystem, Name = _name, FullName = _fullName, Title = _title, TitleColor = _titleColor });
             Log($"resystem: {current!.name} ({current.storyId}) -> {_clusterSystem}");
         }
 

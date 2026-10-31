@@ -184,6 +184,7 @@ public sealed class PingMessage
 public sealed class JoinWorldRequest
 {
     public string SystemId = "";
+    public string Name = "";           // nickname (callsign) — refreshes the session name
     // Identity refresh on cluster entry (authoritative — the commander is loaded by then):
     public string FullName = "";
     public string Title = "";
