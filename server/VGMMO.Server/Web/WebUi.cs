@@ -141,6 +141,8 @@ public sealed class WebUi
   #side { width:340px; border-left:1px solid #1e2635; display:flex; flex-direction:column; }
   #players { padding:8px 12px; border-bottom:1px solid #1e2635; font-size:12px; }
   #players b { color:#ffd27f; }
+  #systems { padding:8px 12px; border-bottom:1px solid #1e2635; font-size:12px; max-height:180px; overflow-y:auto; }
+  #systems b { color:#7fd4ff; }
   #feed { flex:1; overflow-y:auto; padding:8px 12px; font-size:12px; }
   .ev { padding:3px 0; border-bottom:1px dotted #1c2333; }
   .t { color:#5f6d85; margin-right:6px; }
@@ -153,12 +155,13 @@ public sealed class WebUi
 <header>
   <h1>VGMMO server map</h1>
   <span id="meta">loading…</span>
-  <span id="legend" style="font-size:11px;color:#5f6d85">station/gate = in-game plates · other POIs small markers · insignia under stations · <span style="color:#19c8ff">●</span> players(count)</span>
+  <span id="legend" style="font-size:11px;color:#5f6d85">systems = stars · insignia = factions with stations · green line = gate · <span style="color:#19c8ff">●</span> players</span>
 </header>
 <div id="layout">
   <div id="mapwrap"><canvas id="map"></canvas></div>
   <div id="side">
     <div id="players">—</div>
+    <div id="systems">—</div>
     <div id="feed"></div>
   </div>
 </div>
@@ -170,28 +173,22 @@ let worlds = [], worldIdx = 0, lastActivityId = 0, status = null;
 // source for ALL map content — systems, links, POIs, factions, doors. /v1/status is
 // transient live state (player positions, feed) only. The map NEVER reads from status,
 // so an unreachable server can never shrink or freeze the map.
-const ICON_FILES = {station:'SpaceStation', mining:'Mining', salvage:'Salvage', gate:'JumpGate', wormhole:'Wormhole'};
 const iconImgs = {};
 function iconFor(file){
   if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
   return iconImgs[file];
 }
 function loaded(file){ const i = iconImgs[file]; return !!i && i.complete && i.naturalWidth > 0; }
-function loadIcons(){
-  // Seed every icon kind we can ever draw: POI sprites (Poi_*) and unprefixed aliases.
-  for (const k in ICON_FILES){ iconFor('Poi_' + ICON_FILES[k]); iconFor(ICON_FILES[k]); }
-}
 function preloadLayoutIcons(worldsData){
-  // Wait for EVERY PNG the layout can reference before the first paint:
-  // per-POI type sprite + faction tile, per-system faction tile.
+  // Galaxy map draws ONLY faction insignias (one per distinct faction with a station
+  // in the system — FactionIconsHandler.SetSystemFactionIcons). POI plates
+  // (Map_Poi_Location_*) are SYSTEM-VIEW objects; the vanilla galaxy map never
+  // draws them (DrawSectorSystems -> DrawSystemIcon draws only the star marker).
   const files = new Set();
   for (const w of worldsData){
     for (const s of w.systems||[]){
       if (s.faction) files.add('Faction_' + s.faction);
-      for (const p of s.pois||[]){
-        files.add('Poi_' + (ICON_FILES[p.kind] || 'SpaceStation'));
-        if (p.faction) files.add('Faction_' + p.faction);
-      }
+      for (const p of s.pois||[]){ if (p.faction) files.add('Faction_' + p.faction); }
     }
   }
   const imgs = [...files].map(f => iconFor(f));
@@ -201,9 +198,18 @@ const PALETTE = ['#7fd4ff','#ffd27f','#7ce38b','#ff9d9d','#c9a2ff','#9ad9c0','#f
 
 function hashColor(name){ let h=0; for (const c of name) h = (h*31 + c.codePointAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; }
 
+function hashCode(name){ let h=0; for (const c of name) h = (h*31 + c.codePointAt(0)) >>> 0; return h; }
+
+// Star-class palette approximation (BackdropManager.starColors gradient runs
+// blue-white -> white -> yellow -> orange -> red giants). The exact gradient is art
+// data; this palette is sampled by a stable per-system hash.
+const STAR_PALETTE = ['#9fc6ff','#e8efff','#fff3c2','#ffb066','#ff7a5c'];
+
 function fit(world){
+  // Bounding box over systems only — POIs are system-local and not drawn on the
+  // galaxy map (see drawMap).
   const xs = [], ys = [];
-  for (const s of world.systems){ xs.push(s.x); ys.push(s.y); for (const p of s.pois||[]){ xs.push(s.x + p.x); ys.push(s.y + p.y); } }
+  for (const s of world.systems){ xs.push(s.x); ys.push(s.y); }
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const pad = 70;
@@ -220,84 +226,59 @@ function draw(){
   try { drawMap(); } catch(err){ console.error('map draw failed:', err); }
 }
 function drawMap(){
+  // GALAXY-MAP PARITY with the decompiled game (GalaxyMapManager):
+  // - per system: a STAR marker (colored glow dot, StarSpriteSource -> 'System'
+  //   prefab sprite tinted star.GetColor(), scaled by star intensity x2)
+  // - per system: faction insignia row BELOW the marker (FactionIconsHandler,
+  //   one <Shipset>Small mapIcon per distinct faction with a station)
+  // - gates: LINES only (CreateJumpGateLine): greenish in-sector,
+  //   sectorGateBlue for sector gates, reddish when unusable
+  // - NO POI plates: Map_Poi_Location_* are system-view objects (DrawSystemPois);
+  //   the composite plates ('3 icons in one') simply do not exist at this layer.
+  // POI listings live in the side panel instead.
   const world = worlds[worldIdx]; if (!world) return;
   const f = fit(world);
-  ctx.imageSmoothingEnabled = true;   // POI plates are 96x96 hi-res art — render smooth, like in-game
+  ctx.imageSmoothingEnabled = true;
   ctx.fillStyle = '#0b0d12'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  renderSystemsPanel(world);
+  // Gate lines (greenish = ColorHelper.greenish; sector gates would be blue)
   for (const l of world.links){
     const a = world.systems.find(s=>s.id===l.a), b = world.systems.find(s=>s.id===l.b);
     if (!a || !b) continue;
     const [ax,ay]=f.px(a.x,a.y), [bx,by]=f.px(b.x,b.y);
-    ctx.strokeStyle = '#2c3a55'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
-    // No text label on links — the game marks doors with the gate sprites themselves.
+    ctx.strokeStyle = 'rgb(66,210,66)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
   }
   const labels = [];
   for (const s of world.systems){
     const [x,y]=f.px(s.x,s.y);
-    ctx.beginPath(); ctx.arc(x,y,16,0,Math.PI*2);
-    ctx.fillStyle = '#141b28'; ctx.fill();
-    ctx.strokeStyle = hashColor(s.faction || s.id); ctx.lineWidth = 2.5; ctx.stroke();
-    labels.push({ x, y, text: 'L' + s.level + ' · ' + s.id, name: s.name });   // drawn LAST, over all plates
-    // --- FINAL ICON SET — mirrors the in-game galaxy map hierarchy -------------
-    // Station & gate draw their authentic plates prominent (game size, ~1.2x the
-    // system circle); OTHER POI kinds are system-interior features the galaxy map
-    // never shows big — they render as small subordinate markers of the same
-    // authentic sprite. Faction emblem = the shipset insignia (LuminateSmall et al)
-    // at the game's ~12px. Glyph circle = missing-file fallback only.
-    function poiIcon(px, py, kind, faction){
-      const file = 'Poi_' + (ICON_FILES[kind] || 'SpaceStation');
-      const box = kind === 'station' ? 40 : kind === 'gate' ? 36 : 20;
-      if (loaded(file)){
-        if (kind === 'station' || kind === 'gate'){
-          const g = ctx.createRadialGradient(px,py,4,px,py,box*0.95);
-          g.addColorStop(0,'rgba(150,185,255,0.28)');
-          g.addColorStop(1,'rgba(150,185,255,0)');
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(px,py,box*0.95,0,Math.PI*2); ctx.fill();
-        }
-        const img = iconFor(file);
-        const s = box / Math.max(img.naturalWidth, img.naturalHeight);
-        ctx.drawImage(img, px - img.naturalWidth*s/2, py - img.naturalHeight*s/2,
-                      img.naturalWidth*s, img.naturalHeight*s);
-      } else {
-        ctx.beginPath(); ctx.arc(px,py,12,0,Math.PI*2);
-        ctx.strokeStyle = '#dfe7f5'; ctx.lineWidth = 2; ctx.stroke();
-      }
-      if (kind === 'station' && faction && loaded('Faction_' + faction)){
-        const badge = iconFor('Faction_' + faction);
-        const bs = 12, by = py + box/2 + 8;
-        const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
-        ctx.drawImage(badge, px - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
-                      badge.naturalWidth*bsx, badge.naturalHeight*bsx);
-      }
-    }
-    for (const p of s.pois){
-      // POI coords are system-local; the game draws them around their system.
-      const [px,py]=f.px(s.x + p.x, s.y + p.y);
-      poiIcon(px, py, p.kind, p.faction);
-    }
-    // Functional doors created from the server layout: one gate icon per link endpoint
-  // (server-computed local offsets: 12 units toward the peer) + the entry door.
-  for (const l of world.links){
-    const la = world.systems.find(x=>x.id===l.a), lb = world.systems.find(x=>x.id===l.b);
-    if (!la || !lb) continue;
-    for (const [from,to] of [[la,lb],[lb,la]]){
-      const dx=to.x-from.x, dy=to.y-from.y, len=Math.hypot(dx,dy)||1;
-      const [gx,gy]=f.px(from.x+dx/len*12, from.y+dy/len*12);
-      poiIcon(gx, gy, 'gate', from.faction);
-    }
-  }
-  const entry = world.entry;
-  if (entry){
-    const target = world.systems.find(x=>x.id===entry.targetSystemId);
-    if (target){
-      const [ex,ey]=f.px(target.x + entry.hubX, target.y + entry.hubY);
-      poiIcon(ex, ey, 'gate', target.faction);   // entry door, same presentation as gates
-    }
-  }
-  // Aggregated player marker: real positions in layout coords (client sends world/250),
-    // one dot per player; a count badge appears when several share the system. The old
-    // system-center dots are gone — you see actual movement now.
+    // Star marker: glow + core, color from a stable star-class palette.
+    const star = STAR_PALETTE[hashCode(s.id) % STAR_PALETTE.length];
+    const glow = ctx.createRadialGradient(x,y,2,x,y,26);
+    glow.addColorStop(0, star); glow.addColorStop(0.35, star);
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.55; ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(x,y,26,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = star;
+    ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
+    // Faction insignia row below (distinct factions with a station here).
+    const factions = [...new Set((s.pois||[]).filter(p => p.faction).map(p => p.faction))];
+    if (s.faction) factions.unshift(s.faction);
+    const uniq = [...new Set(factions)];
+    uniq.forEach((fac, i) => {
+      const file = 'Faction_' + fac;
+      if (!loaded(file)) return;
+      const badge = iconFor(file);
+      const bs = 12, bx = x - (uniq.length - 1) * 8 + i * 16, by = y + 22;
+      const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
+      ctx.drawImage(badge, bx - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
+                    badge.naturalWidth*bsx, badge.naturalHeight*bsx);
+    });
+    labels.push({ x, y, text: 'L' + s.level + ' · ' + s.id, name: s.name });
+    // Player dots (MMO layer): real positions, one dot per player.
     const playersHere = (status && status.playerList || []).filter(p => p.system === s.id && p.pos);
     if (playersHere.length){
       for (const p of playersHere){
@@ -310,8 +291,7 @@ function drawMap(){
         ctx.fillText(p.name, px+12, py+4);
       }
       if (playersHere.length > 1){
-        const [px,py]=f.px(s.x,s.y);
-        const bx=px+24, by=py-24;
+        const bx=x+24, by=y-24;
         ctx.beginPath(); ctx.arc(bx,by,10,0,Math.PI*2);
         ctx.fillStyle='#19c8ff'; ctx.fill();
         ctx.strokeStyle='#0b0d12'; ctx.lineWidth=2.5; ctx.stroke();
@@ -320,14 +300,21 @@ function drawMap(){
       }
     }
   }
-  // Labels LAST: system text always paints on top of every plate/icon.
+  // Labels LAST: system text always paints on top.
   for (const l of labels){
     ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace';
-    ctx.fillText(l.text, l.x-26, l.y-58);
+    ctx.fillText(l.text, l.x-26, l.y-40);
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace';
-    ctx.lineWidth = 3; ctx.strokeStyle = '#0b0d12';   // outline keeps it legible even over a plate
-    ctx.strokeText(l.name, l.x+24, l.y+5); ctx.fillText(l.name, l.x+24, l.y+5);
+    ctx.lineWidth = 3; ctx.strokeStyle = '#0b0d12';
+    ctx.strokeText(l.name, l.x+16, l.y+4); ctx.fillText(l.name, l.x+16, l.y+4);
   }
+}
+
+function renderSystemsPanel(world){
+  const el = $('systems');
+  el.innerHTML = '<b>Systems</b><br>' + (world.systems||[]).map(s =>
+    `<b>${s.name}</b> (${s.id}) — ` + ((s.pois||[]).map(p => `${p.name} [${p.kind}]`).join(', ') || 'no POIs'))
+    .join('<br>');
 }
 
 function feed(entries){
@@ -365,7 +352,7 @@ async function refresh(){
 }
 
 async function init(){
-  loadIcons();
+  preloadLayoutIcons(worlds);
   const r = await fetch('/v1/layout');
   const data = await r.json(); worlds = data.worlds || [];
   if (!worlds.length) { $('meta').textContent = 'no worlds'; return; }
