@@ -382,14 +382,16 @@ public sealed class ServerCore
         for (var i = 0; i < Config.GhostPilots; i++)
         {
             var sys = world.Systems[i % world.Systems.Count];
-            // Loiter AT a POI (station/field) with a slow, tight orbit: in-system
-            // travel is POI-to-POI by design, so a ghost that moves across the
-            // system is too fast to ever be seen in-game. At a POI it is visible.
+            // Anchor AT the POI in the SYSTEM-LOCAL frame (same frame the client uses:
+            // ship state = rb.position / mapToLocalConversion, web draws system origin
+            // + local). Absolute coords would double-offset every system with a nonzero
+            // origin -- and the in-game scale is 250 game units per layout unit, so a
+            // wide orbit is hundreds of units off the POI.
             var poi = sys.Pois.Count > 0 ? sys.Pois[i % sys.Pois.Count] : null;
-            var cx = sys.X + (poi?.X ?? 0f);
-            var cy = sys.Y + (poi?.Y ?? 0f);
+            var cx = poi?.X ?? 0f;
+            var cy = poi?.Y ?? 0f;
             var g = new GhostPilot("g" + (i + 1), names[i % names.Length], fulls[i % fulls.Length], "Hauler",
-                sys.Id, cx, cy, 3f, 2.5f, 0.1f);
+                sys.Id, cx, cy, 0.4f, 0.4f, 0.15f);
             _ghosts.Add(g);
             Activity.Add("join", $"{g.Name} entered {sys.Id}", sys.Id);
             Log($"ghost pilot {g.Name} hovering {sys.Id} @ ({cx:F0},{cy:F0})");

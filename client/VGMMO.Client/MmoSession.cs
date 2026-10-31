@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using LiteNetLib;
 using LiteNetLib.Utils;
 using Source.Galaxy;
@@ -304,6 +305,11 @@ public sealed class MmoSession : MonoBehaviour
         if (!_markers.TryGetValue(rs.SessionId, out var marker) || marker == null)
         {
             Log($"remote player {rs.Name} appeared @ ({rs.X:F0},{rs.Y:F0})");
+            // Facts dump: verify the mirror frame against the game's own numbers.
+            var cur = GamePlayer.current?.currentSystem;
+            var poiLine = cur == null ? "no system" : string.Join(", ",
+                cur.pointsOfInterest.Select(p => $"{p.name}({p.position.x * MapPointOfInterest.mapToLocalConversion:F0},{p.position.y * MapPointOfInterest.mapToLocalConversion:F0})"));
+            Log($"mirror facts: conversion={MapPointOfInterest.mapToLocalConversion} rs=({rs.X:F2},{rs.Y:F2}) markerWorld=({rs.X * MapPointOfInterest.mapToLocalConversion:F0},{rs.Y * MapPointOfInterest.mapToLocalConversion:F0}) ship={LocalShip()?.position} pois=[{poiLine}]");
             try
             {
                 marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
