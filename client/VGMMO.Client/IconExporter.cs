@@ -1,4 +1,5 @@
 using System.IO;
+using System.Collections.Generic;
 using Behaviour.GalaxyMap;
 using Behaviour.UI;
 using Behaviour.UI.Tooltip;
@@ -24,6 +25,10 @@ public static class IconExporter
         try
         {
             Directory.CreateDirectory(dir);
+            // Keys exported from WorldMapPOI prefabs below; the PoiIconLibrary loop
+            // skips these (the shipped library asset points every key at the same
+            // red-X error placeholder — NOT the real map icons).
+            var prefabExported = new HashSet<string>();
             foreach (var kind in Kinds)
             {
                 try
@@ -40,6 +45,16 @@ public static class IconExporter
                         if (png == null) continue;
                         var path = Path.Combine(dir, kind + ".r" + i + ".png");
                         File.WriteAllBytes(path, png);
+                        // The prefab's MAIN sprite (r0) IS the in-game map POI icon
+                        // (Map_Poi_Location_*). Publish it as the canonical Poi_<kind>
+                        // the web UI draws — the PoiIconLibrary asset is a placeholder.
+                        if (renderers[i] == prefab.spriteRenderer)
+                        {
+                            var poiPath = Path.Combine(dir, "Poi_" + kind + ".png");
+                            File.WriteAllBytes(poiPath, png);
+                            prefabExported.Add(kind);
+                            MmoPlugin.Instance?.LogSource.LogInfo($"[icons] canonical poi icon {kind} -> {poiPath} [{sprite.name}]");
+                        }
                         MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported {kind} r{i} ({(renderers[i] == prefab.spriteRenderer ? "sprite" : renderers[i] == prefab.backgroundRenderer ? "background" : "other")}) -> {path} [{sprite.name}]");
                     }
                 }
@@ -63,8 +78,10 @@ public static class IconExporter
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] faction {faction.identifier}: {e.Message}"); }
             }
-            // THE POI-type icons: PoiIconLibrary (keyed, e.g. 'SpaceStation', 'Mining',
-            // 'Salvage', 'JumpGate') — what the game draws at POIs (tooltipIconKey).
+            // Remaining POI-type icons from PoiIconLibrary (tooltip keys like Ok,
+            // Warning, Captain.*, ...) — only for keys NOT exported from prefabs above.
+            // NOTE: the shipped library asset points most keys at a shared red-X error
+            // placeholder, so anything that falls through here is not map-authentic.
             try
             {
                 var lib = PoiIconLibrary.Instance;
@@ -72,7 +89,7 @@ public static class IconExporter
                 {
                     foreach (var entry in lib.entries)
                     {
-                        if (entry.sprite == null) continue;
+                        if (entry.sprite == null || prefabExported.Contains(entry.key)) continue;
                         var png = CropPng(entry.sprite); // POI icons: raw sub-rect, 1:1
                         if (png == null) continue;
                         var key = entry.key.Replace('.', '_').Replace('/', '_');
@@ -95,8 +112,7 @@ public static class IconExporter
 
     /// <summary>Extracts one sprite as PNG by RENDERING it through a SpriteRenderer +
     /// orthographic camera — respects the sprite's pivot/mesh, so atlas-packed sprites
-    /// come out exactly as the game draws them (the GL-rect grab decoded library icons
-    /// as dark garbage). Raw 1:1 pixels, no trimming/resampling.</summary>
+    /// come out exactly as the game draws them. Raw 1:1 pixels, no trimming/resampling.</summary>
     private static byte[]? CropPng(Sprite sprite)
     {
         var w = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.width));

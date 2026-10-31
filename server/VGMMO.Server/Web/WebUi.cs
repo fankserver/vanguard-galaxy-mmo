@@ -153,7 +153,7 @@ public sealed class WebUi
 <header>
   <h1>VGMMO server map</h1>
   <span id="meta">loading…</span>
-  <span id="legend" style="font-size:11px;color:#5f6d85">⬢ station · ◆ mining · ☠ wreck · ⇄ gate · <span style="color:#19c8ff">●</span> players(count)</span>
+  <span id="legend" style="font-size:11px;color:#5f6d85">icons = in-game map sprites · ⬛ faction emblem under stations · <span style="color:#19c8ff">●</span> players(count)</span>
 </header>
 <div id="layout">
   <div id="mapwrap"><canvas id="map"></canvas></div>
@@ -166,22 +166,33 @@ public sealed class WebUi
 const $ = id => document.getElementById(id);
 const canvas = $('map'), ctx = canvas.getContext('2d');
 let worlds = [], worldIdx = 0, lastActivityId = 0, status = null;
+// AUTHORITATIVE DATA RULE: /v1/layout (the server's world definition) is the single
+// source for ALL map content — systems, links, POIs, factions, doors. /v1/status is
+// transient live state (player positions, feed) only. The map NEVER reads from status,
+// so an unreachable server can never shrink or freeze the map.
 const ICON_FILES = {station:'SpaceStation', mining:'Mining', salvage:'Salvage', gate:'JumpGate', wormhole:'Wormhole'};
 const iconImgs = {};
-function loadIcons(){ for (const k in ICON_FILES){ const img = new Image(); img.src = '/icons/' + ICON_FILES[k] + '.png'; iconImgs[ICON_FILES[k]] = img; } }
 function iconFor(file){
   if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
   return iconImgs[file];
 }
-function loaded(file){ const i = iconImgs[file]; return i && (i.complete && i.naturalWidth > 0); }
+function loaded(file){ const i = iconImgs[file]; return !!i && i.complete && i.naturalWidth > 0; }
+function loadIcons(){
+  // Seed every icon kind we can ever draw: POI sprites (Poi_*) and unprefixed aliases.
+  for (const k in ICON_FILES){ iconFor('Poi_' + ICON_FILES[k]); iconFor(ICON_FILES[k]); }
+}
 function preloadLayoutIcons(worldsData){
+  // Wait for EVERY PNG the layout can reference before the first paint:
+  // per-POI type sprite + faction tile, per-system faction tile.
   const files = new Set();
   for (const w of worldsData){
-    const byId = Object.fromEntries((w.systems||[]).map(s => [s.id, s]));
     for (const s of w.systems||[]){
-      for (const p of s.pois||[]){ if (p.faction) files.add('Faction_' + p.faction); }
+      if (s.faction) files.add('Faction_' + s.faction);
+      for (const p of s.pois||[]){
+        files.add('Poi_' + (ICON_FILES[p.kind] || 'SpaceStation'));
+        if (p.faction) files.add('Faction_' + p.faction);
+      }
     }
-    if (w.entry && byId[w.entry.targetSystemId] && byId[w.entry.targetSystemId].faction) files.add('Faction_' + byId[w.entry.targetSystemId].faction);
   }
   const imgs = [...files].map(f => iconFor(f));
   return Promise.all(imgs.map(i => new Promise(res => { if (i.complete) res(); else { i.onload = () => res(); i.onerror = () => res(); } })));
@@ -204,16 +215,21 @@ function fit(world){
 }
 
 function draw(){
+  // A draw failure must never kill refresh() (that faked 'server unreachable' and froze
+  // partial frames) — log it and keep the page consistent.
+  try { drawMap(); } catch(err){ console.error('map draw failed:', err); }
+}
+function drawMap(){
   const world = worlds[worldIdx]; if (!world) return;
   const f = fit(world);
+  ctx.imageSmoothingEnabled = true;   // POI plates are 96x96 hi-res art — render smooth, like in-game
   ctx.fillStyle = '#0b0d12'; ctx.fillRect(0,0,canvas.width,canvas.height);
   for (const l of world.links){
     const a = world.systems.find(s=>s.id===l.a), b = world.systems.find(s=>s.id===l.b);
     if (!a || !b) continue;
     const [ax,ay]=f.px(a.x,a.y), [bx,by]=f.px(b.x,b.y);
     ctx.strokeStyle = '#2c3a55'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
-    const mx=(ax+bx)/2, my=(ay+by)/2;
-    ctx.fillStyle='#5f6d85'; ctx.font='10px monospace'; ctx.fillText('gate', mx+4, my-4);
+    // No text label on links — the game marks doors with the gate sprites themselves.
   }
   for (const s of world.systems){
     const [x,y]=f.px(s.x,s.y);
@@ -221,41 +237,36 @@ function draw(){
     ctx.fillStyle = '#141b28'; ctx.fill();
     ctx.strokeStyle = hashColor(s.faction || s.id); ctx.lineWidth = 2.5; ctx.stroke();
     ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace';
-    ctx.fillText('L' + s.level + ' · ' + s.id, x-26, y-34);
+    ctx.fillText('L' + s.level + ' · ' + s.id, x-26, y-46);   // clears POI icons north of center
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
-    ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
-    // Icons scale with the map fit so they stay legible at any layout size.
-    const isz = Math.max(34, Math.min(64, f.sc * 2.2));
-    // Main icon = POI-type icon, displayed like in-game: the source sprite is 16x16
-    // with transparent padding around a ~7px glyph, and the game renders it in a ~32px
-    // box — so we draw it at that display size (aspect preserved), not 1:1 CSS pixels.
-    // Badge below: faction tile at ~26px in a badge row (extensible downward).
-    function poiIcon(px, py, kind, faction, tint){
-      const key = ICON_FILES[kind] || 'SpaceStation';
-      const img = iconFor('Poi_' + key);
-      if (img && img.naturalWidth > 0){
-        const disp = Math.min(isz * 0.8, 32);
-        const ar = img.naturalWidth / img.naturalHeight;
-        const h = disp, w = disp * ar;
-        ctx.drawImage(img, px - w/2, py - h/2, w, h);
+    ctx.fillText(s.name, x, y+44); ctx.textAlign='left';
+    // --- Icon presentation: mirrors the in-game galaxy map (WorldMapPOI) ---------
+    // The game draws the Map_Poi_Location_* sprite AS-IS — its dark plate is baked
+    // into the sprite; no extra frame, no label, no tint. Faction emblems appear
+    // ONLY on SpaceStation POIs (WorldMapPOI.SetContent -> poi is SpaceStation),
+    // as a small centered row BELOW the icon (FactionIconsHandler spacing 1.2).
+    function poiIcon(px, py, kind, faction){
+      const file = 'Poi_' + (ICON_FILES[kind] || 'SpaceStation');
+      const box = 32;
+      if (loaded(file)){
+        const img = iconFor(file);
+        const s = box / Math.max(img.naturalWidth, img.naturalHeight);
+        ctx.drawImage(img, px - img.naturalWidth*s/2, py - img.naturalHeight*s/2,
+                      img.naturalWidth*s, img.naturalHeight*s);
       } else {
-        ctx.beginPath(); ctx.arc(px,py,10,0,Math.PI*2);
-        ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(px,py,11,0,Math.PI*2);
+        ctx.strokeStyle = hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
         ctx.fillStyle = '#aab6cc'; ctx.font = '11px monospace'; ctx.textAlign='center';
         ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+4);
         ctx.textAlign='left';
       }
-      if (faction){
+      // Station-only faction emblem, centered below the icon (in-game rule).
+      if (kind === 'station' && faction && loaded('Faction_' + faction)){
         const badge = iconFor('Faction_' + faction);
-        if (badge && badge.naturalWidth > 0){
-          const bs = Math.min(26, isz * 0.62);
-          const ar = badge.naturalWidth / badge.naturalHeight;
-          const bh = bs, bw = bs * ar;
-          const bx = px - bw/2, by = py + disp/2 + 6 + bh/2;   // badge row below the icon
-          ctx.fillStyle = '#0b0d12';
-          ctx.fillRect(bx - 1, by - bh/2 - 1, bw + 2, bh + 2);
-          ctx.drawImage(badge, bx, by - bh/2, bw, bh);
-        }
+        const bs = 14, by = py + box/2 + 9;
+        const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
+        ctx.drawImage(badge, px - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
+                      badge.naturalWidth*bsx, badge.naturalHeight*bsx);
       }
     }
     for (const p of s.pois){
@@ -279,7 +290,7 @@ function draw(){
     const target = world.systems.find(x=>x.id===entry.targetSystemId);
     if (target){
       const [ex,ey]=f.px(target.x + entry.hubX, target.y + entry.hubY);
-      poiIcon(ex, ey, 'gate', target.faction, '#19c8ff');   // cyan = entry door
+      poiIcon(ex, ey, 'gate', target.faction);   // entry door, same presentation as gates
     }
   }
   // Aggregated player marker: real positions in layout coords (client sends world/250),
@@ -324,24 +335,23 @@ function feed(entries){
 }
 
 async function refresh(){
-  try {
-    const r = await fetch('/v1/status');
-    status = await r.json();
+  // Fetch failure and draw failure are now SEPARATE concerns: only a fetch failure
+  // may print 'unreachable', and the map always redraws from the authoritative layout.
+  let data = null;
+  try { const r = await fetch('/v1/status'); if (r.ok) data = await r.json(); } catch(e) {}
+  if (data){
+    status = data;
     const w = status.worlds[worldIdx];
     $('meta').textContent = `${status.uptimeSec}s up · players ${status.players} · system ${w ? w.systems.length : 0}`;
     $('players').innerHTML = '<b>Players</b><br>' + (status.playerList.map(p =>
       `${p.name} — ${p.system || 'warping'}${p.pos ? ` (x ${p.pos.x.toFixed(1)}, y ${p.pos.y.toFixed(1)})` : ''} · ${p.pingMs}ms`).join('<br>') || 'none');
     feed(status.activity);
-    draw();
-  } catch(e) {
-    // Server down: still redraw the FULL layout (systems/gates/POIs/badges come from
-    // the layout, not the status). Only player dots need the live server. No frozen
-    // partial frames — the map is always complete, with an explicit offline banner.
+  } else {
     status = null;
-    $('meta').textContent = 'server unreachable — layout only (no live players)';
+    $('meta').textContent = 'server unreachable — full map from layout (no live players)';
     $('players').innerHTML = '<b>Players</b><br>n/a — server unreachable';
-    draw();
   }
+  draw();
 }
 
 async function init(){
