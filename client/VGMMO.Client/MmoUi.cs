@@ -44,8 +44,8 @@ public sealed class MmoUi : MonoBehaviour
         GUILayout.Label("port", GUILayout.Width(42));
         _port = GUILayout.TextField(_port);
         GUILayout.EndHorizontal();
-        // Identity comes from the SAVE (captain name + title) — no manual name input.
-        GUILayout.Label("name/title: from save (nickname = callsign)", GUILayout.Height(20));
+        // Identity (callsign/full name/title) is read from the save and sent to the
+        // server automatically — nothing to enter or display here.
 
         GUILayout.BeginHorizontal();
         if (session.Connected)
