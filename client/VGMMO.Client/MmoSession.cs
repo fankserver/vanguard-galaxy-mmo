@@ -56,6 +56,21 @@ public sealed class MmoSession : MonoBehaviour
     private readonly Dictionary<string, string> _markerShip = new();   // session -> cloned ship id
     private readonly Dictionary<string, GameObject> _markerLabels = new();
     private readonly Dictionary<string, Vector3> _markerLabelOff = new();
+    private readonly Dictionary<string, RemoteUnitSpawner.Handle> _remoteUnits = new();
+
+    private void RemoveLabel(string key)
+    {
+        if (_markerLabels.Remove(key, out var old)) Destroy(old.gameObject);
+        _markerLabelOff.Remove(key);
+    }
+
+    private void CounterLabel(string key, Transform host)
+    {
+        if (!_markerLabels.TryGetValue(key, out var label)) return;
+        var inv = Quaternion.Inverse(host.rotation);
+        label.transform.localRotation = inv;
+        label.transform.localPosition = inv * (_markerLabelOff.TryGetValue(key, out var off) ? off : Vector3.zero);
+    }
     public IReadOnlyList<string> LogLines => _log;
 
     private void Awake()
@@ -363,6 +378,23 @@ public sealed class MmoSession : MonoBehaviour
     private void SyncMarker(string key, string? name, string? fullName, string? title,
         string? titleColor, string shipId, Transform? liveSrc, float x, float y, float rot, float vx, float vy)
     {
+        // Real-unit path: a spawned game ship is driven by the relayed state; the
+        // renderer clone path below only runs when no unit could be spawned.
+        if (_remoteUnits.TryGetValue(key, out var rh))
+        {
+            if (_markerShip.GetValueOrDefault(key) != shipId)
+            {
+                RemoteUnitSpawner.Despawn(rh);
+                _remoteUnits.Remove(key);
+                RemoveLabel(key);
+            }
+            else
+            {
+                RemoteUnitSpawner.Drive(rh, x, y, rot, vx, vy);
+                CounterLabel(key, rh.Unit.transform);
+                return;
+            }
+        }
         if (!_markers.TryGetValue(key, out var marker) || marker == null
             || _markerShip.GetValueOrDefault(key) != shipId)
         {
@@ -373,6 +405,7 @@ public sealed class MmoSession : MonoBehaviour
                 _markerShip.Remove(key);
                 if (_markerLabels.Remove(key, out var old)) Destroy(old.gameObject);
             }
+            RemoveLabel(key);
             CreateRemoteMarker(key, name, fullName, title, titleColor, shipId, liveSrc, x, y);
         }
         marker = _markers.GetValueOrDefault(key);
@@ -401,10 +434,14 @@ public sealed class MmoSession : MonoBehaviour
         marker.transform.position = new Vector3(x * scale, y * scale, 0f);
         // Direction: rot is Rigidbody2D degrees (0 = +X forward).
         marker.transform.rotation = Quaternion.Euler(0f, 0f, rot);
-        // Label is parented UNDER the marker — position follows automatically; only
-        // counter-rotate so it stays upright instead of spinning with the ship.
+        // Label rides the marker but stays world-up (the marker rotates with the ship
+        // and carries the ship scale, so offset must be inverse-rotated each tick).
         if (_markerLabels.TryGetValue(key, out var label))
-            label.transform.localRotation = Quaternion.Inverse(marker.transform.rotation);
+        {
+            var inv = Quaternion.Inverse(marker.transform.rotation);
+            label.transform.localRotation = inv;
+            label.transform.localPosition = inv * (_markerLabelOff.TryGetValue(key, out var off) ? off : new Vector3(0f, scale * 0.15f, 0f));
+        }
         // Animations are DERIVED from the transferred doing (velocity), never
         // replicated as data: the protocol carries authoritative state only.
         var speed = Mathf.Sqrt(vx * vx + vy * vy);
@@ -434,6 +471,22 @@ public sealed class MmoSession : MonoBehaviour
         try
         {
             var u = MapPointOfInterest.mapToLocalConversion;   // 250
+            // Preferred: a REAL game unit (hover tooltip / UI like native ships). The
+            // renderer clone is only the fallback (unknown hull or no current POI).
+            if (name != null && fullName != null)
+            {
+                var h = RemoteUnitSpawner.TrySpawn(shipId, fullName, name, title, titleColor, x, y);
+                if (h != null)
+                {
+                    _remoteUnits[key] = h;
+                    _markerShip[key] = shipId;
+                    var off = new Vector3(0f, u * 0.25f, 0f);
+                    _markerLabels[key] = BuildLabelRoot(h.Unit.gameObject, name, fullName, title, titleColor, off);
+                    _markerLabelOff[key] = off;
+                    Log($"replica: real unit for {display} (ship '{shipId}')");
+                    return;
+                }
+            }
             var marker = BuildShipVisual(shipId, liveSrc, out var halfLen, out var cloned);
             if (marker == null)
             {
@@ -448,35 +501,42 @@ public sealed class MmoSession : MonoBehaviour
             marker.transform.SetParent(transform, false);
             if (name != null && fullName != null)
             {
-                // Title rendered like the character menu: its own colored line above
-                // the name (titleColor from the protocol; fallback white). Child of
-                // the marker so it tracks the ship; counter-rotated each message.
-                var root = new GameObject("labelRoot");
-                root.transform.SetParent(marker.transform, false);
-                root.transform.localPosition = new Vector3(0f, u * 0.15f, 0f);
-                if (title != null && title.Length > 0)
-                {
-                    var t = new GameObject("title").AddComponent<TextMesh>();
-                    t.text = title;
-                    t.characterSize = 0.3f;
-                    t.fontSize = 32;
-                    if (!(titleColor != null && ColorUtility.TryParseHtmlString(titleColor, out var tc))) tc = Color.white;
-                    t.color = tc;
-                    t.transform.SetParent(root.transform, false);
-                    t.transform.localPosition = new Vector3(0f, u * 0.09f, 0f);
-                }
-                var n = new GameObject("name").AddComponent<TextMesh>();
-                n.text = fullName.Length > 0 ? fullName : name;
-                n.characterSize = 0.3f;
-                n.fontSize = 32;
-                n.color = new Color(0.91f, 0.93f, 0.98f);
-                n.transform.SetParent(root.transform, false);
-                _markerLabels[key] = root;
+                var off = new Vector3(0f, Mathf.Max(halfLen * 0.45f, u * 0.05f), 0f);
+                _markerLabels[key] = BuildLabelRoot(marker, name, fullName, title, titleColor, off);
+                _markerLabelOff[key] = off;
             }
             _markers[key] = marker;
             _markerShip[key] = shipId;
         }
         catch (System.Exception e) { Log("marker: " + e.Message); }
+    }
+
+    /// <summary>Title-colored line above the name (character-menu style), parented to
+    /// the host (marker or spawned unit); counter-rotated per tick by the caller.</summary>
+    private GameObject BuildLabelRoot(GameObject host, string name, string fullName,
+        string? title, string? titleColor, Vector3 off)
+    {
+        var root = new GameObject("labelRoot");
+        root.transform.SetParent(host.transform, false);
+        root.transform.localPosition = off;
+        if (!string.IsNullOrEmpty(title))
+        {
+            var t = new GameObject("title").AddComponent<TextMesh>();
+            t.text = title;
+            t.characterSize = 0.3f;
+            t.fontSize = 32;
+            if (!(titleColor != null && ColorUtility.TryParseHtmlString(titleColor, out var tc))) tc = Color.white;
+            t.color = tc;
+            t.transform.SetParent(root.transform, false);
+            t.transform.localPosition = new Vector3(0f, 0.09f, 0f);
+        }
+        var n = new GameObject("name").AddComponent<TextMesh>();
+        n.text = fullName.Length > 0 ? fullName : name;
+        n.characterSize = 0.3f;
+        n.fontSize = 32;
+        n.color = new Color(0.91f, 0.93f, 0.98f);
+        n.transform.SetParent(root.transform, false);
+        return root;
     }
 
     private readonly Dictionary<string, float> _rebuildT = new();
