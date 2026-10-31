@@ -207,28 +207,25 @@ function draw(){
       if (!iconImgs[file]){ const i = new Image(); i.src = '/icons/' + file + '.png'; iconImgs[file] = i; }
       return iconImgs[file];
     }
-    // In-game POI marker = per-KIND location pin (Map_Poi_Location_*) as the main icon,
-    // with the per-FACTION shield as a small badge (bottom-right), like the game map.
+    // In-game POI icon = the per-FACTION shield (small, colorful — see the galaxy map
+    // screenshots). Aspect ratio preserved; no pin/wedge layers. The Map_Poi_Location_*
+    // plates are decoration only (the gate one is literally a quarter wedge).
     function poiIcon(px, py, kind, faction, tint){
-      ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
-      ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
-      const img = iconFor(ICON_FILES[kind] || 'SpaceStation');
+      const file = faction ? ('Faction_' + faction) : (ICON_FILES[kind] || 'SpaceStation');
+      const img = iconFor(file);
       if (img && img.naturalWidth > 0){
-        ctx.drawImage(img, px-isz/2, py-isz/2, isz, isz);
+        const ar = img.naturalWidth / img.naturalHeight;
+        const h = isz, w = isz * ar;
+        const rr = Math.max(w, h) / 2 + 2;
+        ctx.beginPath(); ctx.arc(px, py, rr, 0, Math.PI*2);
+        ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.drawImage(img, px - w/2, py - h/2, w, h);
       } else {
+        ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
+        ctx.strokeStyle = tint || hashColor(faction || kind); ctx.lineWidth = 2.5; ctx.stroke();
         ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
         ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+isz*0.2);
         ctx.textAlign='left';
-      }
-      if (faction){
-        const badge = iconFor('Faction_' + faction);
-        if (badge && badge.naturalWidth > 0){
-          const bs = Math.round(isz*0.45);
-          const bx = px + isz*0.42, by = py + isz*0.42;
-          ctx.beginPath(); ctx.arc(bx, by, bs/2+1, 0, Math.PI*2);
-          ctx.fillStyle = '#0b0d12'; ctx.fill();
-          ctx.drawImage(badge, bx-bs/2, by-bs/2, bs, bs);
-        }
       }
     }
     for (const p of s.pois){
