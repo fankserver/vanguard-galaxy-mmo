@@ -51,8 +51,13 @@ public static class IconExporter
                     crop.Apply();
                     RenderTexture.active = prevActive;
                     RenderTexture.ReleaseTemporary(rt);
-                    var png = crop.EncodeToPNG();
+
+                    // The game's atlas rects carry the glyph off-center (padding around
+                    // it); trim the alpha bounds and re-center so the ring + icon align.
+                    var centered = CenterContent(crop);
                     Object.Destroy(crop);
+                    var png = centered.EncodeToPNG();
+                    Object.Destroy(centered);
                     var path = Path.Combine(dir, kind + ".png");
                     File.WriteAllBytes(path, png);
                     MmoPlugin.Instance?.LogSource.LogInfo($"[icons] exported {kind} -> {path} ({w}x{h}, sprite '{sprite.name}')");
@@ -65,5 +70,35 @@ public static class IconExporter
         {
             MmoPlugin.Instance?.LogSource.LogWarning("[icons] export failed: " + e.Message);
         }
+    }
+
+    /// <summary>Returns a square texture with the opaque content of `src` trimmed and
+    /// centered (transparent padding), so ring + icon align on the web map.</summary>
+    private static Texture2D CenterContent(Texture2D src)
+    {
+        var w = src.width;
+        var h = src.height;
+        var pix = src.GetPixels();
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+                if (pix[y * w + x].a > 0.03f)
+                {
+                    if (x < minX) minX = x; if (x > maxX) maxX = x;
+                    if (y < minY) minY = y; if (y > maxY) maxY = y;
+                }
+        if (maxX < 0) return src; // fully transparent — keep as-is
+
+        var bw = maxX - minX + 1;
+        var bh = maxY - minY + 1;
+        var size = Mathf.Max(bw, bh) + 2;
+        var centered = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var dst = new UnityEngine.Color[size * size];
+        for (var y = 0; y < bh; y++)
+            for (var x = 0; x < bw; x++)
+                dst[(y + (size - bh) / 2) * size + (x + (size - bw) / 2)] = pix[(minY + y) * w + (minX + x)];
+        centered.SetPixels(dst);
+        centered.Apply();
+        return centered;
     }
 }

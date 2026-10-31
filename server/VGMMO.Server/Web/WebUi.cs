@@ -202,7 +202,7 @@ function draw(){
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     // Icons scale with the map fit so they stay legible at any layout size.
-    const isz = Math.max(24, Math.min(44, f.sc * 1.6));
+    const isz = Math.max(34, Math.min(64, f.sc * 2.2));
     // Lets a POI icon (size-aware) with a faction ring — shared by authored POIs,
     // functional gates and the entry door.
     function poiIcon(px, py, kind, tint){
