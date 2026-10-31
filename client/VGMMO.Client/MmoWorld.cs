@@ -78,7 +78,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             {
                 try
                 {
-                    var og = Gate(eorigin, hub, "MMO Gate");
+                    var og = Gate(eorigin, hub, "MMO Gate", sectorGate: true);
                     if (og != null)
                     {
                         _entryGates.Add((eorigin, og));
@@ -161,7 +161,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             {
                 try
                 {
-                    var og = Gate(origin, hub, "MMO Gate");
+                    var og = Gate(origin, hub, "MMO Gate", sectorGate: true);
                     if (og != null) _entryGates.Add((origin, og));
                     Log("entry gate created from " + origin.name + " to " + hub.name);
                 }
@@ -181,12 +181,15 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     /// <summary>Creates a bidirectional JumpGate pair between two systems, exactly like the
     /// vanilla helper does (public seams only): the gate ON `a` targets `b` and the gate ON
     /// `b` targets `a`, cross-linked via targetSystemGuid/targetPoiGuid and unlocked.
+    /// `sectorGate` marks the gate on `b` as a sector jumpgate, which is what unlocks the
+    /// containing sector (SectorMapData.IsUnlocked scans for an open sectorJumpgate).
     /// Returns the gate on `a`.</summary>
-    private static JumpGate? Gate(SystemMapData a, SystemMapData b, string label)
+    private static JumpGate? Gate(SystemMapData a, SystemMapData b, string label, bool sectorGate = false)
     {
         var ga = new JumpGate();
         ga.name = label + " -> " + a.name;       // sits on b, points back at a
         ga.targetSystemGuid = a.guid;
+        ga.sectorJumpgate = sectorGate;
         b.SetupPOI(ga, b.GetRandomPosition(-20f, 20f, -5f, 5f));
         b.pointsOfInterest.Add(ga);
 
