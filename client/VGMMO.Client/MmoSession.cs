@@ -352,7 +352,9 @@ public sealed class MmoSession : MonoBehaviour
         marker.transform.position = new Vector3(rs.X * scale, rs.Y * scale, 0f);
         // Direction: rot is Rigidbody2D degrees (0 = +X forward).
         marker.transform.rotation = Quaternion.Euler(0f, 0f, rs.Rot);
-        // Thruster animation: flare scales with speed (layout units/s).
+        // Animations are DERIVED from the transferred doing (velocity), never
+        // replicated as data: the protocol carries authoritative state only
+        // (position/rotation/velocity), the renderer turns it into visuals.
         var speed = Mathf.Sqrt(rs.Vx * rs.Vx + rs.Vy * rs.Vy);
         var flameChild = marker.transform.Find("flame");
         if (flameChild != null)
