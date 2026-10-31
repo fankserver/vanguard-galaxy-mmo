@@ -138,6 +138,7 @@ public sealed class WebUi
 <header>
   <h1>VGMMO server map</h1>
   <span id="meta">loading…</span>
+  <span id="legend" style="font-size:11px;color:#5f6d85">⬢ station · ◆ mining · ☠ wreck · ⇄ gate · <span style="color:#19c8ff">●</span> players(count)</span>
 </header>
 <div id="layout">
   <div id="mapwrap"><canvas id="map"></canvas></div>
@@ -162,8 +163,9 @@ function fit(world){
   const pad = 70;
   const w = canvas.width = canvas.clientWidth, h = canvas.height = canvas.clientHeight;
   const sc = Math.min((w - pad*2) / Math.max(1, maxX - minX), (h - pad*2) / Math.max(1, maxY - minY));
-  const ox = w/2 - (minX + maxX)/2 * sc, oy = h/2 - (minY + maxY)/2 * sc;
-  return { sc, px: (x,y) => [x*sc + ox, y*sc + oy] };
+  const ox = w/2 - (minX + maxX)/2 * sc, oy = h/2 + (minY + maxY)/2 * sc;
+  // Game convention: +Y = north (up). Canvas y grows down, so invert: py = oy - y*sc.
+  return { sc, px: (x,y) => [x*sc + ox, oy - y*sc] };
 }
 
 function draw(){
@@ -191,19 +193,23 @@ function draw(){
       const [px,py]=f.px(p.x,p.y);
       ctx.fillStyle = hashColor(p.faction || p.kind);
       ctx.fillRect(px-3, py-3, 6, 6);
-      ctx.fillStyle = '#aab6cc'; ctx.font = '9px monospace';
-      ctx.fillText(({station:'S', mining:'M', salvage:'W', gate:'G'}[p.kind] || '?') , px+6, py+3);
+      ctx.fillStyle = '#aab6cc'; ctx.font = '10px monospace';
+      const glyph = ({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[p.kind] || '?');
+      ctx.fillText(glyph, px+6, py+3);
     }
-    const players = status && status.worlds.flatMap(w=>w.systems).find(w=>w.id===s.id);
-    if (players && players.players.length){
-      players.players.forEach((name,i)=>{
-        const [px,py]=f.px(s.x + (i*2 - players.players.length + 1)*0.8, s.y - 1.2);
-        ctx.beginPath(); ctx.arc(px,py,7,0,Math.PI*2);
-        ctx.fillStyle = hashColor(name); ctx.fill();
-        ctx.strokeStyle = '#0b0d12'; ctx.lineWidth = 2; ctx.stroke();
-        ctx.fillStyle = '#0b0d12'; ctx.font = 'bold 10px monospace'; ctx.textAlign='center';
-        ctx.fillText(name[0].toUpperCase(), px, py+3.5); ctx.textAlign='left';
-      });
+    // Aggregated player marker: one badge per system showing the count, instead of
+    // overlapping per-player dots (real positions are in world space, not layout space).
+    const pIn = (status && status.worlds.flatMap(w=>w.systems).find(w=>w.id===s.id));
+    if (pIn && pIn.players.length){
+      const [px,py]=f.px(s.x,s.y);
+      const bx=px+24, by=py-24;
+      ctx.beginPath(); ctx.arc(bx,by,10,0,Math.PI*2);
+      ctx.fillStyle='#19c8ff'; ctx.fill();
+      ctx.strokeStyle='#0b0d12'; ctx.lineWidth=2.5; ctx.stroke();
+      ctx.fillStyle='#0b0d12'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+      ctx.fillText(String(pIn.players.length), bx, by+4); ctx.textAlign='left';
+      if (pIn.players.length===1) ctx.fillStyle='#8fd7ff'; else ctx.fillStyle='#ffd27f';
+      ctx.font='9px monospace'; ctx.fillText(pIn.players.join(', '), bx+14, by+3);
     }
   }
 }
