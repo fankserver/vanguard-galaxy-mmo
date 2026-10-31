@@ -181,13 +181,15 @@ function draw(){
     ctx.fillStyle = '#141b28'; ctx.fill();
     ctx.strokeStyle = hashColor(s.faction || s.id); ctx.lineWidth = 2.5; ctx.stroke();
     ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace';
-    ctx.fillText('L' + s.level + ' · ' + s.id, x-24, y-28);
+    ctx.fillText('L' + s.level + ' · ' + s.id, x-26, y-34);
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace'; ctx.textAlign='center';
-    ctx.fillText(s.name, x, y+24); ctx.textAlign='left';
+    ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     for (const p of s.pois){
       const [px,py]=f.px(p.x,p.y);
       ctx.fillStyle = hashColor(p.faction || p.kind);
       ctx.fillRect(px-3, py-3, 6, 6);
+      ctx.fillStyle = '#aab6cc'; ctx.font = '9px monospace';
+      ctx.fillText(({station:'S', mining:'M', salvage:'W', gate:'G'}[p.kind] || '?') , px+6, py+3);
     }
     const players = status && status.worlds.flatMap(w=>w.systems).find(w=>w.id===s.id);
     if (players && players.players.length){
