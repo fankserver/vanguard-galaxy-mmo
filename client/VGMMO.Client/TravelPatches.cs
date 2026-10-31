@@ -14,7 +14,7 @@ namespace VGMMO.Client;
 /// `fleetShip.autoActions as WingmanActions` unguarded: a fleet ship whose AutoActions
 /// is null (or a different type, e.g. CombatActions) yields a null cast and an NRE,
 /// which kills the jump-arrival coroutine and freezes the ship mid-arrival.
-/// We replicate the vanilla positioning with a null-safe offset; the broken original
+/// We replicate the vanilla positioning with a null-safe offset; the original
 /// never runs.
 /// </summary>
 [HarmonyPatch(typeof(GameplayManager), nameof(GameplayManager.SetFleetPosition))]
@@ -43,7 +43,7 @@ public static class SafeSetFleetPosition
         {
             MmoPlugin.Instance?.LogSource.LogWarning("[patches] SetFleetPosition fallback: " + e.Message);
         }
-        return false; // never run the original — it is the broken one
+        return false; // replace the original
     }
 }
 

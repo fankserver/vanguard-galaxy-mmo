@@ -238,8 +238,7 @@ function fit(world){
 }
 
 function draw(){
-  // A draw failure must never kill refresh() (that faked 'server unreachable' and froze
-  // partial frames) — log it and keep the page consistent.
+  // Draw errors must not kill refresh() — log and keep the page consistent.
   try { drawMap(); } catch(err){ console.error('map draw failed:', err); }
 }
 function drawMap(){
@@ -287,9 +286,8 @@ function drawGalaxy(world){
     ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
-    // NOTE: no faction emblems at galaxy level — the game only draws emblems under
-    // station POIs in the SYSTEM view (SetPoiFactionIcon). Owner confirmed the
-    // galaxy-level row does not exist in-game.
+    // No faction emblems at galaxy level — the game draws them only under station
+    // POIs in the system view (SetPoiFactionIcon).
     labels.push({ x, y, name: s.name });   // name ONLY — systems are generic locations,
                                            // never annotated with POI kinds/level/id
     // Player dots (MMO layer): real positions, one dot per player.

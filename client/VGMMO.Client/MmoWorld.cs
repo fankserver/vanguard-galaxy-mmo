@@ -33,6 +33,11 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     private readonly List<SystemMapData> _systems = new();
     private readonly List<(SystemMapData system, MapPointOfInterest poi)> _entryGates = new();
 
+    /// <summary>The world instance the cluster was built in. Loading a new save replaces
+    /// GamePlayer.current.map with a fresh instance and destroys the cluster; a
+    /// mismatch means the cluster must be rebuilt from the layout.</summary>
+    private GalaxyMapData? _mapRef;
+
     private static readonly MethodInfo CreateSectorMethod = typeof(SandboxWorld)
         .GetMethod("CreateSector", BindingFlags.NonPublic | BindingFlags.Static)!;
 
@@ -42,6 +47,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         _built = false;
         _systems.Clear();
         _sector = null;
+        _mapRef = null;
     }
 
     public bool IsClusterSystem(string storyId)
@@ -68,6 +74,20 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             Build();
         }
 
+        // Save-load recovery: a new save swaps the whole galaxy map (GamePlayer.map is
+        // recreated), destroying the cluster objects. Drop the built flag so the branch
+        // above rebuilds from the layout while we stay connected.
+        if (_built && _mapRef != null && GamePlayer.current.map != _mapRef)
+        {
+            Log("world reloaded (new save) — rebuilding cluster");
+            _built = false;
+            _sector = null;
+            _systems.Clear();
+            _entryGates.Clear();
+            _mapRef = null;
+            return;
+        }
+
         // The entry gate needs a real current system; at load time it can still be
         // null, so retry on later frames until the player has one.
         if (_built && _entryGates.Count == 0)
@@ -91,6 +111,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             if (_layout!.Systems.Any(s => s.StoryId.Length > 0 && map.GetSystemByStoryId(s.StoryId) != null))
             {
                 _built = true;
+                _mapRef = map;
                 Log("cluster already present — adopting (" + _layout.Systems.Count + " systems)");
                 return;
             }
@@ -148,6 +169,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             if (origin != null) TryCreateEntry(origin);
 
             _built = true;
+            _mapRef = map;
             Log("cluster built: " + _systems.Count + " systems in sector " + sector.name
                 + " (travel via the gates on the galaxy map)");
         }
@@ -263,9 +285,34 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     {
         try
         {
+            // Stations must be created via SystemMapData.AddSpaceStation: it calls
+            // SetFacilities() which constructs every service member (shops, bar,
+            // economy, shipyard, refinery/forge, mission board...). A bare
+            // `new SpaceStation()` leaves them all null — an empty station.
+            if (def.Kind == "station")
+            {
+                var faction = def.Faction.Length == 0 ? null : Faction.Get(def.Faction);
+                var facilities = new HashSet<SpaceStationFacility>
+                {
+                    SpaceStationFacility.Airlock,
+                    SpaceStationFacility.GeneralShop,
+                    SpaceStationFacility.TradeTerminal,
+                    SpaceStationFacility.Bar,
+                    SpaceStationFacility.Shipyard,
+                    SpaceStationFacility.MissionBoard,
+                    SpaceStationFacility.Refinery,
+                };
+                var station = system.AddSpaceStation(facilities, new Vector2(def.X, def.Y), faction,
+                    def.Name.Length > 0 ? def.Name : def.Kind);
+                station.SetIdentifier(def.Id);
+                Log($"station '{def.Id}' created via AddSpaceStation ({facilities.Count} facilities: "
+                    + string.Join(",", facilities) + ")");
+                // AddSpaceStation already did SetupPOI + pointsOfInterest.Add.
+                return;
+            }
+
             MapPointOfInterest poi = def.Kind switch
             {
-                "station" => new SpaceStation(),
                 "mining" => new Mining(),
                 "salvage" => new Salvage(),
                 "gate" => new JumpGate(),
@@ -274,8 +321,8 @@ public sealed class MmoWorldBuilder : MonoBehaviour
             };
             poi.SetIdentifier(def.Id);
             poi.name = def.Name.Length > 0 ? def.Name : def.Kind;
-            var faction = def.Faction.Length == 0 ? null : Faction.Get(def.Faction);
-            system.SetupPOI(poi, new Vector2(def.X, def.Y), faction, Mathf.Max(1, def.Level));
+            var poiFaction = def.Faction.Length == 0 ? null : Faction.Get(def.Faction);
+            system.SetupPOI(poi, new Vector2(def.X, def.Y), poiFaction, Mathf.Max(1, def.Level));
             system.pointsOfInterest.Add(poi);
         }
         catch (Exception e) { Log("poi " + def.Id + ": " + e.Message); }
