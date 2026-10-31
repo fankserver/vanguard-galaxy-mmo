@@ -38,6 +38,7 @@
     { "a": "hub-1", "b": "mine-1" },
     { "a": "hub-1", "b": "salvage-1" }
   ],
+  "entry": { "targetSystemId": "hub-1", "name": "MMO Gate", "sectorGate": true, "unlocked": true, "hubX": 14, "hubY": 0 },
   "timeline": [
     { "at": 8, "systemId": "hub-1", "command": "announce", "args": { "text": "Welcome to the demo hub." } },
     { "at": 20, "systemId": "mine-1", "command": "wave", "args": { "count": 3, "shipClass": "Monsoon" } },

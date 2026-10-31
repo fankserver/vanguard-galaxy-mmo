@@ -419,8 +419,40 @@ public sealed class ServerCore
             Id = s.Id, StoryId = s.StoryId, Name = s.Name, X = s.X, Y = s.Y, Level = s.Level, Faction = s.Faction,
             Pois = s.Pois.Select(p => new LayoutPoi { Id = p.Id, Kind = p.Kind, Name = p.Name, X = p.X, Y = p.Y, Faction = p.Faction, Level = p.Level }).ToList(),
         }).ToList(),
-        Links = world.Links.Select(l => new LayoutLink { A = l.A, B = l.B }).ToList(),
+        Links = world.Links.Select(l =>
+        {
+            var a = world.Systems.FirstOrDefault(s => s.Id == l.A);
+            var b = world.Systems.FirstOrDefault(s => s.Id == l.B);
+            var pa = GatePos(a, b);   // gate on a, facing b
+            var pb = GatePos(b, a);   // gate on b, facing a
+            return new LayoutLink
+            {
+                A = l.A, B = l.B, Name = "MMO Gate", SectorGate = false,
+                PosAX = pa.x, PosAY = pa.y, PosBX = pb.x, PosBY = pb.y,
+            };
+        }).ToList(),
+        Entry = world.Entry == null ? null : new LayoutEntry
+        {
+            TargetSystemId = world.Entry.TargetSystemId,
+            Name = world.Entry.Name, SectorGate = world.Entry.SectorGate, Unlocked = world.Entry.Unlocked,
+            HubX = world.Entry.HubX, HubY = world.Entry.HubY,
+        },
     };
+
+    /// <summary>Gate POI local position: 12 units out from the system toward the peer,
+    /// clamped to the vanilla POI band — mirrors the client's anchor formula so all
+    /// clients (and the server) agree on gate placement.</summary>
+    private static (float x, float y) GatePos(SystemDef from, SystemDef? to)
+    {
+        if (to == null) return (0f, 0f);
+        var dx = to.X - from.X;
+        var dy = to.Y - from.Y;
+        var len = MathF.Sqrt(dx * dx + dy * dy);
+        if (len < 0.001f) { dx = 1f; dy = 0f; len = 1f; }
+        var x = Math.Clamp(from.X + dx / len * 12f, -19f, 19f);
+        var y = Math.Clamp(from.Y + dy / len * 12f, -4.5f, 4.5f);
+        return (x, y);
+    }
 
     public void Kick(string sessionId)
     {

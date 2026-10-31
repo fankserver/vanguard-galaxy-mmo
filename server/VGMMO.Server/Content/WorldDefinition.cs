@@ -10,6 +10,7 @@ public sealed class WorldDefinition
     public List<SystemDef> Systems { get; set; } = new();
     public List<LinkDef> Links { get; set; } = new();
     public List<TimelineDef> Timeline { get; set; } = new();
+    public EntryDef? Entry { get; set; }
 
     [JsonIgnore] public long StartedAtMs;
 
@@ -76,6 +77,16 @@ public sealed class LinkDef
     public string B { get; set; } = "";
 }
 
+public sealed class EntryDef
+{
+    public string TargetSystemId { get; set; } = "";
+    public string Name { get; set; } = "MMO Gate";
+    public bool SectorGate { get; set; } = true;
+    public bool Unlocked { get; set; } = true;
+    public float HubX { get; set; }
+    public float HubY { get; set; }
+}
+
 public sealed class TimelineDef
 {
     /// <summary>Seconds after world start.</summary>
@@ -120,5 +131,7 @@ public static class WorldLoader
         }
         foreach (var t in world.Timeline)
             if (!ids.Contains(t.SystemId)) throw new InvalidDataException($"{source}: timeline targets unknown system {t.SystemId}");
+        if (world.Entry != null && !ids.Contains(world.Entry.TargetSystemId))
+            throw new InvalidDataException($"{source}: entry targets unknown system {world.Entry.TargetSystemId}");
     }
 }

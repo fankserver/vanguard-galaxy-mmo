@@ -73,21 +73,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         if (_built && _entryGates.Count == 0)
         {
             var eorigin = GamePlayer.current.currentSystem;
-            var hub = _systems.FirstOrDefault();
-            if (eorigin != null && hub != null && !IsClusterSystem(eorigin.storyId) && eorigin != hub)
-            {
-                try
-                {
-                    var og = Gate(eorigin, hub, "MMO Gate", sectorGate: true);
-                    if (og != null)
-                    {
-                        _entryGates.Add((eorigin, og));
-                        var t = og.GetTargetPOI();
-                        Log("entry gate created from " + eorigin.name + " to " + hub.name + " (target resolves: " + (t?.name ?? "NULL") + ")");
-                    }
-                }
-                catch (Exception e) { Log("entry gate: " + e.Message); }
-            }
+            if (eorigin != null) TryCreateEntry(eorigin);
         }
     }
 
@@ -148,25 +134,18 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                 if (a == null || b == null) continue;
                 try
                 {
-                    Gate(a, b, "MMO Gate");
+                    CreateGate(a, b,
+                        new Vector2(link.PosAX, link.PosAY), new Vector2(link.PosBX, link.PosBY),
+                        link.Name, link.SectorGate, unlocked: true);
                 }
                 catch (Exception e) { Log("gate " + link.A + "<->" + link.B + ": " + e.Message); }
             }
 
             // Entry: a gate from the player's current vanilla system into the hub, so the
-            // cluster is reachable (PocketWorlds-style door). Tracked for teardown.
-            var hub = _systems.FirstOrDefault();
+            // cluster is reachable (PocketWorlds-style door). Tracked for teardown. The
+            // door spec (target, name, sectorGate, hub-side position) comes from the server.
             var origin = GamePlayer.current.currentSystem;
-            if (hub != null && origin != null && !IsClusterSystem(origin.storyId) && origin != hub)
-            {
-                try
-                {
-                    var og = Gate(origin, hub, "MMO Gate", sectorGate: true);
-                    if (og != null) _entryGates.Add((origin, og));
-                    Log("entry gate created from " + origin.name + " to " + hub.name);
-                }
-                catch (Exception e) { Log("entry gate: " + e.Message); }
-            }
+            if (origin != null) TryCreateEntry(origin);
 
             _built = true;
             Log("cluster built: " + _systems.Count + " systems in sector " + sector.name
@@ -178,38 +157,47 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         }
     }
 
-    /// <summary>Creates a bidirectional JumpGate pair between two systems, exactly like the
-    /// vanilla helper does (public seams only): the gate ON `a` targets `b` and the gate ON
-    /// `b` targets `a`, cross-linked via targetSystemGuid/targetPoiGuid and unlocked.
-    /// `sectorGate` marks the gate on `b` as a sector jumpgate, which is what unlocks the
-    /// containing sector (SectorMapData.IsUnlocked scans for an open sectorJumpgate).
-    /// Returns the gate on `a`.</summary>
-    private static JumpGate? Gate(SystemMapData a, SystemMapData b, string label, bool sectorGate = false)
+    /// <summary>Server-driven gate pair: pure replication. `a`'s gate sits at posA and
+    /// targets `b`; `b`'s gate sits at posB (optionally flagged sectorJumpgate, which
+    /// unlocks the containing sector via the vanilla rule) and targets `a`. Names and
+    /// positions come from the server layout — the client invents nothing.
+    /// Returns the gate on `a` (for entry-door teardown tracking).</summary>
+    private static JumpGate? CreateGate(SystemMapData a, SystemMapData b, Vector2 posA, Vector2 posB,
+        string name, bool sectorGateOnB, bool unlocked)
     {
-        var ga = new JumpGate();
-        ga.name = label + " -> " + a.name;       // sits on b, points back at a
-        ga.targetSystemGuid = a.guid;
-        ga.sectorJumpgate = sectorGate;
-        // Directional: the gate sits on the side facing its peer, so left system's gate
-        // arrives on hub's LEFT and right system's gate on the RIGHT (no crossing).
-        b.SetupPOI(ga, DirectionalPoiPos(b.position, a.position));
-        b.pointsOfInterest.Add(ga);
-
         var gb = new JumpGate();
-        gb.name = label + " -> " + b.name;       // sits on a, points at b
+        gb.name = name + " -> " + b.name;
         gb.targetSystemGuid = b.guid;
-        a.SetupPOI(gb, DirectionalPoiPos(a.position, b.position));
+        a.SetupPOI(gb, posA);
         a.pointsOfInterest.Add(gb);
 
-        ga.targetPoiGuid = gb.guid;
+        var ga = new JumpGate();
+        ga.name = name + " -> " + a.name;
+        ga.targetSystemGuid = a.guid;
+        ga.sectorJumpgate = sectorGateOnB;
+        b.SetupPOI(ga, posB);
+        b.pointsOfInterest.Add(ga);
+
         gb.targetPoiGuid = ga.guid;
-        ga.UnlockJumpgate();
-        gb.UnlockJumpgate();
+        ga.targetPoiGuid = gb.guid;
+        if (unlocked)
+        {
+            gb.UnlockJumpgate();
+            ga.UnlockJumpgate();
+        }
+
+        // Hard verification: both endpoints must resolve through the vanilla lookup.
+        var tA = gb.GetTargetPOI();
+        var tB = ga.GetTargetPOI();
+        Log($"gate '{gb.name}' resolves -> {(tA?.name ?? "NULL")}; '{ga.name}' -> {(tB?.name ?? "NULL")}");
         return gb;
     }
 
     /// <summary>Gate POI position: 12 units out from the system center toward the peer
-    /// system, clamped to the vanilla POI band (±19 x, ±4.5 y).</summary>
+    /// system, clamped to the vanilla POI band (±19 x, ±4.5 y). This is the only
+    /// client-computed position left — the entry door anchors to the joining player's
+    /// current vanilla system, which the server cannot know. The formula is fixed and
+    /// shared, so all clients place it identically for the same anchor.</summary>
     private static Vector2 DirectionalPoiPos(Vector2 from, Vector2 to)
     {
         var d = to - from;
@@ -218,6 +206,31 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         pos.x = Mathf.Clamp(pos.x, -19f, 19f);
         pos.y = Mathf.Clamp(pos.y, -4.5f, 4.5f);
         return pos;
+    }
+
+    /// <summary>Materializes the server-defined entry door into the joining player's
+    /// current vanilla system (the only anchor discovery on the client; the server names
+    /// the door, its target, its sector-gate flag, openness and the hub-side position).</summary>
+    private bool TryCreateEntry(SystemMapData origin)
+    {
+        var entry = _layout?.Entry;
+        if (entry == null || origin == null) return false;
+        var target = _systems.FirstOrDefault(s => s.guid == entry.TargetSystemId || s.storyId == entry.TargetSystemId);
+        if (target == null || IsClusterSystem(origin.storyId) || origin == target) return false;
+        try
+        {
+            var originPos = DirectionalPoiPos(origin.position, target.position);
+            var targetPos = new Vector2(entry.HubX, entry.HubY);
+            var og = CreateGate(origin, target, originPos, targetPos, entry.Name, entry.SectorGate, entry.Unlocked);
+            if (og != null)
+            {
+                _entryGates.Add((origin, og));
+                Log("entry gate created from " + origin.name + " to " + target.name);
+                return true;
+            }
+        }
+        catch (Exception e) { Log("entry gate: " + e.Message); }
+        return false;
     }
 
     /// <summary>Scans the game's settled space and returns the candidate position with

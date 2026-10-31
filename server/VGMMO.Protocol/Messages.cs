@@ -116,6 +116,7 @@ public sealed class WorldLayout
     public string Name = "";
     public List<LayoutSystem> Systems { get; set; } = new();
     public List<LayoutLink> Links { get; set; } = new();
+    public LayoutEntry? Entry { get; set; }
 }
 
 public sealed class LayoutSystem
@@ -145,6 +146,26 @@ public sealed class LayoutLink
 {
     public string A = "";
     public string B = "";
+    public string Name = "Gate";
+    public bool SectorGate;
+    /// <summary>Gate POI local positions (server-authoritative; client replicates verbatim).</summary>
+    public float PosAX;
+    public float PosAY;
+    public float PosBX;
+    public float PosBY;
+}
+
+/// <summary>Entry-door spec (server-authoritative): a gate pair from the joining player's
+/// current vanilla system into the world. The hub-side position is server-fixed; the
+/// origin-side position is the single replicated anchor-seam formula on the client.</summary>
+public sealed class LayoutEntry
+{
+    public string TargetSystemId = "";
+    public string Name = "MMO Gate";
+    public bool SectorGate = true;
+    public bool Unlocked = true;
+    public float HubX;
+    public float HubY;
 }
 
 public sealed class RefusedResponse
