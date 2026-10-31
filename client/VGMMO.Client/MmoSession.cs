@@ -153,15 +153,21 @@ public sealed class MmoSession : MonoBehaviour
         return gm.spaceShip.GetComponent<Rigidbody2D>();
     }
 
-    /// <summary>Reads the captain identity from the loaded save: full name (firstName
-    /// "callsign" lastName) + selected title. The hello happens at connect (often before
-    /// a save exists); the cluster-entry JoinWorld carries the authoritative identity.</summary>
+    /// <summary>Reads the captain identity from the loaded save: the NICKNAME is the
+    /// callsign (that's what the web UI shows), the full name is GetFullName()
+    /// (firstName "callsign" lastName) + the selected title. The hello happens at
+    /// connect (often before a save exists); the cluster-entry JoinWorld carries the
+    /// authoritative identity.</summary>
     private void RefreshIdentity()
     {
         var gp = GamePlayer.current;
         if (gp?.commander == null) return;
         try
         {
+            // Nickname = callsign (save identity), fallback firstName, then config name.
+            _name = gp.commander.callsign.Length > 0 ? gp.commander.callsign
+                  : gp.commander.firstName.Length > 0 ? gp.commander.firstName
+                  : _name;
             _fullName = gp.commander.GetFullName();
             var id = gp.commander.selectedTitle;
             if (string.IsNullOrEmpty(id))

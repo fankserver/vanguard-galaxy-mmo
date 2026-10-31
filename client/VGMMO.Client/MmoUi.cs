@@ -12,14 +12,12 @@ public sealed class MmoUi : MonoBehaviour
 
     private string _host = "127.0.0.1";
     private string _port = "34567";
-    private string _name = "Player";
     private string _status = "";
 
     private void Start()
     {
         _host = MmoPlugin.Instance?.Host.Value ?? _host;
         _port = MmoPlugin.Instance?.Port.Value.ToString() ?? _port;
-        _name = MmoPlugin.Instance?.PlayerName.Value ?? _name;
     }
 
     private void Update()
@@ -46,10 +44,8 @@ public sealed class MmoUi : MonoBehaviour
         GUILayout.Label("port", GUILayout.Width(42));
         _port = GUILayout.TextField(_port);
         GUILayout.EndHorizontal();
-        GUILayout.BeginHorizontal();
-        GUILayout.Label("name", GUILayout.Width(42));
-        _name = GUILayout.TextField(_name);
-        GUILayout.EndHorizontal();
+        // Identity comes from the SAVE (captain name + title) — no manual name input.
+        GUILayout.Label("name/title: from save (nickname = callsign)", GUILayout.Height(20));
 
         GUILayout.BeginHorizontal();
         if (session.Connected)
@@ -59,7 +55,7 @@ public sealed class MmoUi : MonoBehaviour
         else if (GUILayout.Button("Connect"))
         {
             var port = int.TryParse(_port, out var p) ? p : 34567;
-            session.Connect(_host, port, _name, MmoPlugin.Instance?.BuildHash.Value ?? "vgmmo-night-1");
+            session.Connect(_host, port, MmoPlugin.Instance?.PlayerName.Value ?? "Player", MmoPlugin.Instance?.BuildHash.Value ?? "vgmmo-night-1");
         }
         GUILayout.Label("F8 to hide", GUILayout.Width(80));
         GUILayout.EndHorizontal();
