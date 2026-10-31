@@ -351,16 +351,16 @@ public sealed class MmoSession : MonoBehaviour
 
     private void UpdateMarker(RemoteShipState rs)
     {
-        SyncMarker(rs.SessionId, rs.Name, rs.FullName, rs.Title, rs.ShipId, null,
+        SyncMarker(rs.SessionId, rs.Name, rs.FullName, rs.Title, rs.TitleColor, rs.ShipId, null,
             rs.X, rs.Y, rs.Rot, rs.Vx, rs.Vy);
         foreach (var c in rs.Companions ?? new List<CompanionState>())
-            SyncMarker(rs.SessionId + "#" + c.Id, null, null, null, c.ShipId,
+            SyncMarker(rs.SessionId + "#" + c.Id, null, null, null, null, c.ShipId,
                 FindLiveFighter(c.Id)?.transform,
                 c.X, c.Y, c.Rot, c.Vx, c.Vy);
     }
 
     private void SyncMarker(string key, string? name, string? fullName, string? title,
-        string shipId, Transform? liveSrc, float x, float y, float rot, float vx, float vy)
+        string? titleColor, string shipId, Transform? liveSrc, float x, float y, float rot, float vx, float vy)
     {
         if (!_markers.TryGetValue(key, out var marker) || marker == null
             || _markerShip.GetValueOrDefault(key) != shipId)
@@ -372,7 +372,7 @@ public sealed class MmoSession : MonoBehaviour
                 _markerShip.Remove(key);
                 if (_markerLabels.Remove(key, out var old)) Destroy(old.gameObject);
             }
-            CreateRemoteMarker(key, name, fullName, title, shipId, liveSrc, x, y);
+            CreateRemoteMarker(key, name, fullName, title, titleColor, shipId, liveSrc, x, y);
         }
         marker = _markers.GetValueOrDefault(key);
         if (marker == null) return;
@@ -388,7 +388,7 @@ public sealed class MmoSession : MonoBehaviour
                 if (_markerLabels.Remove(key, out var old)) Destroy(old.gameObject);
                 _markers.Remove(key);
                 _markerShip.Remove(key);
-                CreateRemoteMarker(key, name, fullName, title, shipId, liveSrc, x, y);
+                CreateRemoteMarker(key, name, fullName, title, titleColor, shipId, liveSrc, x, y);
                 marker = _markers.GetValueOrDefault(key);
                 if (marker == null) return;
             }
@@ -400,10 +400,10 @@ public sealed class MmoSession : MonoBehaviour
         marker.transform.position = new Vector3(x * scale, y * scale, 0f);
         // Direction: rot is Rigidbody2D degrees (0 = +X forward).
         marker.transform.rotation = Quaternion.Euler(0f, 0f, rot);
-        // Label is a sibling (never rotates with the ship); keep it above the marker.
+        // Label is a sibling (never rotates with the ship); keep it right above the hull.
         if (_markerLabels.TryGetValue(key, out var label))
         {
-            label.transform.position = marker.transform.position + new Vector3(0f, scale * 0.4f, 0f);
+            label.transform.position = marker.transform.position + new Vector3(0f, scale * 0.15f, 0f);
             label.transform.rotation = Quaternion.identity;
         }
         // Animations are DERIVED from the transferred doing (velocity), never
@@ -427,7 +427,7 @@ public sealed class MmoSession : MonoBehaviour
     private sealed class FlameSize : MonoBehaviour { public Vector3 Base; }
 
     private void CreateRemoteMarker(string key, string? name, string? fullName, string? title,
-        string shipId, Transform? liveSrc, float x, float y)
+        string? titleColor, string shipId, Transform? liveSrc, float x, float y)
     {
         var display = fullName ?? name ?? "?";
         if (_markers.Count < 12 || !_markerShip.ContainsKey(key))
@@ -449,13 +449,28 @@ public sealed class MmoSession : MonoBehaviour
             marker.transform.SetParent(transform, false);
             if (name != null && fullName != null)
             {
-                var label = new GameObject("label").AddComponent<TextMesh>();
-                label.text = (title != null && title.Length > 0 ? title + " " : "") + (fullName.Length > 0 ? fullName : name);
-                label.characterSize = 0.4f;
-                label.fontSize = 32;
-                label.color = Color.white;
-                label.transform.SetParent(transform, false);
-                _markerLabels[key] = label.gameObject;
+                // Title rendered like the character menu: its own colored line above
+                // the name (titleColor from the protocol; fallback white).
+                var root = new GameObject("labelRoot");
+                root.transform.SetParent(transform, false);
+                if (title != null && title.Length > 0)
+                {
+                    var t = new GameObject("title").AddComponent<TextMesh>();
+                    t.text = title;
+                    t.characterSize = 0.3f;
+                    t.fontSize = 32;
+                    if (!(titleColor != null && ColorUtility.TryParseHtmlString(titleColor, out var tc))) tc = Color.white;
+                    t.color = tc;
+                    t.transform.SetParent(root.transform, false);
+                    t.transform.localPosition = new Vector3(0f, u * 0.09f, 0f);
+                }
+                var n = new GameObject("name").AddComponent<TextMesh>();
+                n.text = fullName.Length > 0 ? fullName : name;
+                n.characterSize = 0.3f;
+                n.fontSize = 32;
+                n.color = new Color(0.91f, 0.93f, 0.98f);
+                n.transform.SetParent(root.transform, false);
+                _markerLabels[key] = root;
             }
             _markers[key] = marker;
             _markerShip[key] = shipId;
