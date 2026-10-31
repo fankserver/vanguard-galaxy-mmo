@@ -77,7 +77,7 @@ public sealed class WebUi
                 players = groups.GetValueOrDefault(s.Id) ?? new List<string>(),
             }),
         });
-        var players = _core.Sessions()
+        var list = _core.Sessions()
             .Where(s => s.SystemId != null)
             .Select(s => new
         {
@@ -98,7 +98,23 @@ public sealed class WebUi
             pos = new { x = g.State.X, y = g.State.Y, rot = g.State.Rot },
             pingMs = 0L,
             game = "ghost",
-        }));
+        }))
+            .ToList();
+        var shadow = _core.GetShadow();
+        if (shadow != null && shadow.SystemId.Length > 0)
+        {
+            list.Add(new
+            {
+                name = shadow.Name,
+                fullName = shadow.FullName,
+                title = "",
+                system = shadow.SystemId,
+                pos = new { x = shadow.State.X, y = shadow.State.Y, rot = shadow.State.Rot },
+                pingMs = 0L,
+                game = "shadow",
+            });
+        }
+        var players = list;
         return new
         {
             uptimeSec = (long)(DateTime.UtcNow - _core.StartedAt).TotalSeconds,

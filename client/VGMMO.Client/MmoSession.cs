@@ -321,6 +321,18 @@ public sealed class MmoSession : MonoBehaviour
                 var u = MapPointOfInterest.mapToLocalConversion;   // 250
                 marker.transform.localScale = new Vector3(u * 0.15f, u * 0.15f, u * 0.15f);
                 marker.transform.SetParent(transform, worldPositionStays: true);
+                // Elongated along +X (ship forward) so rotation reads as direction.
+                marker.transform.localScale = new Vector3(u * 0.3f, u * 0.14f, u * 0.14f);
+                // Thruster flame (animations): hidden unless the ship is moving.
+                var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                var fc = flame.GetComponent<Collider>();
+                if (fc != null) Destroy(fc);
+                flame.name = "flame";
+                flame.transform.SetParent(marker.transform, false);
+                flame.transform.localPosition = new Vector3(-u * 0.24f, 0f, 0f);
+                flame.transform.localScale = new Vector3(u * 0.12f, u * 0.07f, u * 0.07f);
+                flame.GetComponent<Renderer>().material.color = new Color(1f, 0.55f, 0.1f);
+                flame.SetActive(false);
                 var name = new GameObject("label").AddComponent<TextMesh>();
                 name.transform.SetParent(marker.transform, false);
                 name.transform.localPosition = new Vector3(0f, u * 0.3f, 0f);
@@ -338,6 +350,21 @@ public sealed class MmoSession : MonoBehaviour
         // rs position is in server layout frame; game world = local * mapToLocalConversion.
         var scale = MapPointOfInterest.mapToLocalConversion;
         marker.transform.position = new Vector3(rs.X * scale, rs.Y * scale, 0f);
+        // Direction: rot is Rigidbody2D degrees (0 = +X forward).
+        marker.transform.rotation = Quaternion.Euler(0f, 0f, rs.Rot);
+        // Thruster animation: flare scales with speed (layout units/s).
+        var speed = Mathf.Sqrt(rs.Vx * rs.Vx + rs.Vy * rs.Vy);
+        var flameChild = marker.transform.Find("flame");
+        if (flameChild != null)
+        {
+            var on = speed > 0.15f;
+            flameChild.gameObject.SetActive(on);
+            if (on)
+            {
+                var k = Mathf.Clamp(speed / 8f, 0.35f, 1.6f);
+                flameChild.localScale = new Vector3(scale * 0.12f * k, scale * 0.07f * k, scale * 0.07f * k);
+            }
+        }
     }
 
     private static Color ColorFor(string name)

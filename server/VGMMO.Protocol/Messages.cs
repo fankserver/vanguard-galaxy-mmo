@@ -219,7 +219,6 @@ public sealed class ShipStateMessage
 /// <summary>Server relay of one player's last ship state to the same-system group.
 /// Positions are system-local layout units (see ShipStateMessage).</summary>
 public sealed class RemoteShipState
-public sealed class RemoteShipState
 {
     public string SessionId = "";
     public string Name = "";          // nickname

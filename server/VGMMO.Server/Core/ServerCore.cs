@@ -272,6 +272,51 @@ public sealed class ServerCore
                 Seq = state.Seq, Ts = NowMs(),
             }, reliable: false);
         }
+        RelayShadow(session, state);
+    }
+
+    // ---------- shadow replica (test mode) ----------
+
+    /// <summary>Test-only clone of one in-cluster player: same ship state at a small
+    /// offset, relayed to the whole system group INCLUDING the source, so rotation,
+    /// velocity and (client-side) thruster visuals can be compared side by side.
+    /// One shadow, tracking the most recently active in-cluster session.</summary>
+    private ShadowReplica? _shadow;
+
+    public ShadowReplica? GetShadow() => _shadow;
+
+    public sealed class ShadowReplica
+    {
+        public string Name = "Shadow";
+        public string FullName = "";
+        public string SystemId = "";
+        public ShipStateMessage State = new();
+    }
+
+    private void RelayShadow(Session session, ShipStateMessage state)
+    {
+        if (!Config.ShadowGhost) return;
+        _shadow ??= new ShadowReplica();
+        _shadow.SystemId = state.SystemId;
+        _shadow.FullName = session.FullName.Length > 0 ? session.FullName + " (shadow)" : session.Name + " (shadow)";
+        _shadow.State = new ShipStateMessage
+        {
+            SystemId = state.SystemId,
+            X = state.X + 0.6f,   // ~150 game units to the side (mapToLocalConversion=250)
+            Y = state.Y,
+            Rot = state.Rot, Vx = state.Vx, Vy = state.Vy, Seq = state.Seq,
+        };
+        var rs = new RemoteShipState
+        {
+            SessionId = "shadow:" + session.Id, Name = _shadow.Name,
+            FullName = _shadow.FullName, Title = "", TitleColor = "#BDBDBD",
+            SystemId = _shadow.SystemId,
+            X = _shadow.State.X, Y = _shadow.State.Y, Rot = _shadow.State.Rot,
+            Vx = _shadow.State.Vx, Vy = _shadow.State.Vy, Seq = _shadow.State.Seq, Ts = NowMs(),
+        };
+        // Deliberately includes the source player — the whole point is to see it.
+        foreach (var target in Group(state.SystemId))
+            Transport?.SendPeer(target, MsgTypes.RemoteShipState, rs, reliable: false);
     }
 
     private void HandleEntitySnapshot(NetPeer peer, Session session, Envelope env)

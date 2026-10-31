@@ -11,6 +11,10 @@ public sealed class ServerConfig
     public string AssetsDir { get; set; } = "assets";
     public int MaxPeers { get; set; } = 64;
     public int MaxPlayersPerWorld { get; set; } = 32;
+    /// <summary>Test mode: maintain a 'shadow' copy of a real in-cluster player at a
+    /// small offset and relay it to the whole system group (including the source),
+    /// so ship state/direction/thrust can be verified with one client.</summary>
+    public bool ShadowGhost { get; set; } = true;
     /// <summary>Number of simulated pilots (see Core.GhostPilot) that patrol the hosted
     /// systems; 0 disables. They appear on the web map and in in-game mirrors.</summary>
     public int GhostPilots { get; set; } = 2;
