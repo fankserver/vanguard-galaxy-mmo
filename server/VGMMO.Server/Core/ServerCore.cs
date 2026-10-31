@@ -238,6 +238,7 @@ public sealed class ServerCore
         session.SystemId = join.SystemId;
         // Identity refresh on cluster entry (captain data is loaded by then — the
         // hello was sent at connect, before a save existed).
+        if (join.Name.Length > 0) session.Name = SanitizeName(join.Name);
         if (join.FullName.Length > 0 || join.Title.Length > 0)
         {
             session.FullName = join.FullName;
@@ -515,9 +516,11 @@ public sealed class ServerCore
 
     private static string SanitizeName(string raw)
     {
-        var s = string.IsNullOrEmpty(raw) ? "player" : raw;
+        // No fabricated placeholder names: the captain callsign arrives with the
+        // first JoinWorld (save loaded); until then the name is simply empty.
+        var s = raw ?? "";
         s = new string(s.Where(c => !char.IsControl(c)).ToArray()).Trim();
-        return s.Length > 24 ? s[..24] : (s.Length == 0 ? "player" : s);
+        return s.Length > 24 ? s[..24] : s;
     }
 
     public static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

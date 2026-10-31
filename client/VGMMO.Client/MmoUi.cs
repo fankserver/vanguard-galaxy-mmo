@@ -55,7 +55,7 @@ public sealed class MmoUi : MonoBehaviour
         else if (GUILayout.Button("Connect"))
         {
             var port = int.TryParse(_port, out var p) ? p : 34567;
-            session.Connect(_host, port, MmoPlugin.Instance?.PlayerName.Value ?? "Player", MmoPlugin.Instance?.BuildHash.Value ?? "vgmmo-night-1");
+            session.Connect(_host, port, MmoPlugin.Instance?.PlayerName.Value ?? "", MmoPlugin.Instance?.BuildHash.Value ?? "vgmmo-night-1");
         }
         GUILayout.Label("F8 to hide", GUILayout.Width(80));
         GUILayout.EndHorizontal();

@@ -40,7 +40,7 @@ public sealed class MmoPlugin : BaseUnityPlugin
 
         Host = Config.Bind("server", "host", "127.0.0.1", "VGMMO server address (Windows-side 127.0.0.1 reaches the WSL2 server via localhost forwarding).");
         Port = Config.Bind("server", "port", 34567, "VGMMO server UDP port.");
-        PlayerName = Config.Bind("session", "name", "Player", "Display name sent in Hello.");
+        PlayerName = Config.Bind("session", "name", "", "Nickname sent in Hello; replaced by the captain callsign once a save is loaded.");
         StartSystem = Config.Bind("session", "system", "hub-1", "System id to join after Welcome (must exist in the server world).");
         BuildHash = Config.Bind("session", "clientBuildHash", "vgmmo-night-1", "Client build identity checked by the server's accepted-hashes gate.");
         AutoConnect = Config.Bind("session", "autoConnect", true, "Connect automatically on game start.");
