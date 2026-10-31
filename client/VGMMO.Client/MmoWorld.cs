@@ -193,16 +193,14 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         return gb;
     }
 
-    /// <summary>Gate POI position: 12 units out from the system center toward the peer
-    /// system, clamped to the vanilla POI band (±19 x, ±4.5 y). This is the only
-    /// client-computed position left — the entry door anchors to the joining player's
-    /// current vanilla system, which the server cannot know. The formula is fixed and
-    /// shared, so all clients place it identically for the same anchor.</summary>
+    /// <summary>Gate POI LOCAL position: 12 units out from the system center toward the
+    /// peer, clamped to the vanilla POI band. POI coordinates are system-local — this
+    /// returns an offset from the system's own center, not an absolute layout position.</summary>
     private static Vector2 DirectionalPoiPos(Vector2 from, Vector2 to)
     {
         var d = to - from;
         var dir = d.sqrMagnitude < 0.0001f ? Vector2.right : d.normalized;
-        var pos = from + dir * 12f;
+        var pos = dir * 12f;
         pos.x = Mathf.Clamp(pos.x, -19f, 19f);
         pos.y = Mathf.Clamp(pos.y, -4.5f, 4.5f);
         return pos;

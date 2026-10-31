@@ -439,9 +439,9 @@ public sealed class ServerCore
         },
     };
 
-    /// <summary>Gate POI local position: 12 units out from the system toward the peer,
-    /// clamped to the vanilla POI band — mirrors the client's anchor formula so all
-    /// clients (and the server) agree on gate placement.</summary>
+    /// <summary>Gate POI LOCAL position (offset from the system center toward the peer,
+    /// clamped to the vanilla POI band). POI coordinates are system-local everywhere —
+    /// never absolute layout coords.</summary>
     private static (float x, float y) GatePos(SystemDef from, SystemDef? to)
     {
         if (to == null) return (0f, 0f);
@@ -449,8 +449,8 @@ public sealed class ServerCore
         var dy = to.Y - from.Y;
         var len = MathF.Sqrt(dx * dx + dy * dy);
         if (len < 0.001f) { dx = 1f; dy = 0f; len = 1f; }
-        var x = Math.Clamp(from.X + dx / len * 12f, -19f, 19f);
-        var y = Math.Clamp(from.Y + dy / len * 12f, -4.5f, 4.5f);
+        var x = Math.Clamp(dx / len * 12f, -19f, 19f);
+        var y = Math.Clamp(dy / len * 12f, -4.5f, 4.5f);
         return (x, y);
     }
 

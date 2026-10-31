@@ -113,6 +113,7 @@ public sealed class WebUi
                 }),
                 links = w.Links,
                 timeline = w.Timeline,
+                entry = w.Entry,
             }),
         };
     }
@@ -168,7 +169,7 @@ function hashColor(name){ let h=0; for (const c of name) h = (h*31 + c.codePoint
 
 function fit(world){
   const xs = [], ys = [];
-  for (const s of world.systems){ xs.push(s.x); ys.push(s.y); for (const p of s.pois||[]){ xs.push(p.x); ys.push(p.y); } }
+  for (const s of world.systems){ xs.push(s.x); ys.push(s.y); for (const p of s.pois||[]){ xs.push(s.x + p.x); ys.push(s.y + p.y); } }
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
   const pad = 70;
@@ -202,22 +203,46 @@ function draw(){
     ctx.fillText(s.name, x, y+34); ctx.textAlign='left';
     // Icons scale with the map fit so they stay legible at any layout size.
     const isz = Math.max(24, Math.min(44, f.sc * 1.6));
-    for (const p of s.pois){
-      const [px,py]=f.px(p.x,p.y);
-      const file = ICON_FILES[p.kind] || 'SpaceStation';
-      const img = iconImgs[file];
-      // In-game icon sprite, with the faction-color ring behind it (like the game map).
+    // Lets a POI icon (size-aware) with a faction ring — shared by authored POIs,
+    // functional gates and the entry door.
+    function poiIcon(px, py, kind, tint){
       ctx.beginPath(); ctx.arc(px,py,isz/2+2,0,Math.PI*2);
-      ctx.strokeStyle = hashColor(p.faction || p.kind); ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.strokeStyle = tint || hashColor(kind); ctx.lineWidth = 2.5; ctx.stroke();
+      const file = ICON_FILES[kind] || 'SpaceStation';
+      const img = iconImgs[file];
       if (img && img.naturalWidth > 0){
         ctx.drawImage(img, px-isz/2, py-isz/2, isz, isz);
       } else {
         ctx.fillStyle = '#aab6cc'; ctx.font = Math.round(isz*0.55)+'px monospace'; ctx.textAlign='center';
-        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[p.kind] || '?'), px, py+isz*0.2);
+        ctx.fillText(({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[kind] || '?'), px, py+isz*0.2);
         ctx.textAlign='left';
       }
     }
-    // Aggregated player marker: real positions in layout coords (client sends world/250),
+    for (const p of s.pois){
+      // POI coords are system-local; the game draws them around their system.
+      const [px,py]=f.px(s.x + p.x, s.y + p.y);
+      poiIcon(px, py, p.kind, hashColor(p.faction || p.kind));
+    }
+    // Functional doors created from the server layout: one gate icon per link endpoint
+  // (server-computed local offsets: 12 units toward the peer) + the entry door.
+  for (const l of world.links){
+    const la = world.systems.find(x=>x.id===l.a), lb = world.systems.find(x=>x.id===l.b);
+    if (!la || !lb) continue;
+    for (const [from,to] of [[la,lb],[lb,la]]){
+      const dx=to.x-from.x, dy=to.y-from.y, len=Math.hypot(dx,dy)||1;
+      const [gx,gy]=f.px(from.x+dx/len*12, from.y+dy/len*12);
+      poiIcon(gx, gy, 'gate', hashColor(from.faction || 'gate'));
+    }
+  }
+  const entry = world.entry;
+  if (entry){
+    const target = world.systems.find(x=>x.id===entry.targetSystemId);
+    if (target){
+      const [ex,ey]=f.px(target.x + entry.hubX, target.y + entry.hubY);
+      poiIcon(ex, ey, 'gate', '#19c8ff');   // cyan = entry door
+    }
+  }
+  // Aggregated player marker: real positions in layout coords (client sends world/250),
     // one dot per player; a count badge appears when several share the system. The old
     // system-center dots are gone — you see actual movement now.
     const playersHere = (status && status.playerList || []).filter(p => p.system === s.id && p.pos);
