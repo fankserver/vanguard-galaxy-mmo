@@ -192,7 +192,9 @@ public static class SelfTest
             var layoutStr = await http.GetStringAsync("/v1/layout");
             Check("web layout has system", layoutStr.Contains("hub-1"));
             var actStr = await http.GetStringAsync("/v1/activity?since=0");
-            Check("web activity feed", actStr.Contains("\"entries\"") && actStr.Contains("join"));
+            // Schema assertion: activity entries are camelCase (id/tMs/kind/text) — the
+            // page's dedupe guard depends on it. A PascalCase payload spams the feed.
+            Check("web activity feed", actStr.Contains("\"entries\"") && actStr.Contains("\"tMs\"") && actStr.Contains("\"kind\"") && actStr.Contains("\"text\"") && actStr.Contains("join"));
 
             // C11: persistence
             alice.Send(MsgTypes.LeaveWorld, new object());

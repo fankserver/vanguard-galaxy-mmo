@@ -46,7 +46,7 @@ public sealed class WebUi
 
     public Task StopAsync() => _app?.StopAsync() ?? Task.CompletedTask;
 
-    private static IResult Json(object obj) => Results.Content(JsonConvert.SerializeObject(obj), "application/json");
+    private static IResult Json(object obj) => Results.Content(JsonConvert.SerializeObject(obj, VGMMO.Protocol.Wire.Settings), "application/json");
 
     private object Status()
     {
@@ -206,6 +206,7 @@ function draw(){
 function feed(entries){
   const el = $('feed');
   for (const e of entries || []){
+    if (!e || !e.tMs) continue;
     if (e.id <= lastActivityId) continue;
     lastActivityId = e.id;
     const div = document.createElement('div'); div.className = 'ev';
