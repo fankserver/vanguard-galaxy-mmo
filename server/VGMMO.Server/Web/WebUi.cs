@@ -281,7 +281,8 @@ function drawGalaxy(world){
     // NOTE: no faction emblems at galaxy level — the game only draws emblems under
     // station POIs in the SYSTEM view (SetPoiFactionIcon). Owner confirmed the
     // galaxy-level row does not exist in-game.
-    labels.push({ x, y, text: 'L' + s.level + ' · ' + s.id, name: s.name });
+    labels.push({ x, y, name: s.name });   // name ONLY — systems are generic locations,
+                                           // never annotated with POI kinds/level/id
     // Player dots (MMO layer): real positions, one dot per player.
     const playersHere = (status && status.playerList || []).filter(p => p.system === s.id && p.pos);
     if (playersHere.length){
@@ -305,9 +306,9 @@ function drawGalaxy(world){
     }
   }
   // Labels LAST: system text always paints on top.
+  // Name only — in-game the galaxy map shows just the system name next to its star;
+  // level/ids/POI kinds are not galaxy-layer information.
   for (const l of labels){
-    ctx.fillStyle = '#5f6d85'; ctx.font = '10px monospace';
-    ctx.fillText(l.text, l.x-26, l.y-40);
     ctx.fillStyle = '#e8eefc'; ctx.font = 'bold 12px monospace';
     ctx.lineWidth = 3; ctx.strokeStyle = '#0b0d12';
     ctx.strokeText(l.name, l.x+16, l.y+4); ctx.fillText(l.name, l.x+16, l.y+4);
@@ -390,9 +391,11 @@ function enterSystem(id){ if (id){ sysView = id; draw(); } }
 function exitSystem(){ if (sysView){ sysView = null; draw(); } }
 
 function renderSystemsPanel(world){
+  // Names ONLY. Systems are generic random locations (any system can contain any
+  // POI) — the panel must not advertise what's inside them. Zoom in to see contents.
   const el = $('systems');
   el.innerHTML = '<b>Systems</b> <span style=\'color:#5f6d85\'>(click to zoom in)</span><br>' + (world.systems||[]).map(s =>
-    `<div class="sysrow" onclick="enterSystem('${s.id}')"><b>${s.name}</b> — ` + ((s.pois||[]).map(p => `${p.name} [${p.kind}]`).join(', ') || 'no POIs') + '</div>')
+    `<div class="sysrow" onclick="enterSystem('${s.id}')">${s.name}</div>`)
     .join('');
 }
 
