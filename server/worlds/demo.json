@@ -17,7 +17,7 @@
       "id": "mine-1",
       "storyId": "mmo-demo-mine",
       "name": "Empty Veins",
-      "x": -14, "y": 1, "level": 7, "faction": "MiningGuild",
+      "x": -31, "y": 0, "level": 7, "faction": "MiningGuild",
       "pois": [
         { "id": "mine-field", "kind": "mining", "name": "Ore Field", "x": -18, "y": 0, "faction": "MiningGuild", "level": 7 },
         { "id": "mine-gate", "kind": "gate", "name": "Gate from Hub", "x": -10, "y": 0 }
@@ -27,7 +27,7 @@
       "id": "salvage-1",
       "storyId": "mmo-demo-salvage",
       "name": "Carrion Drift",
-      "x": 14, "y": -2, "level": 9, "faction": "SalvageGuild",
+      "x": 31, "y": -2, "level": 9, "faction": "SalvageGuild",
       "pois": [
         { "id": "salvage-wreck", "kind": "salvage", "name": "Monsoon Wreck", "x": 18, "y": -1, "faction": "SalvageGuild", "level": 9 },
         { "id": "salvage-gate", "kind": "gate", "name": "Gate from Hub", "x": 10, "y": -2 }

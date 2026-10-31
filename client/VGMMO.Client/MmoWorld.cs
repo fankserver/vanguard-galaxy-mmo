@@ -190,13 +190,15 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         ga.name = label + " -> " + a.name;       // sits on b, points back at a
         ga.targetSystemGuid = a.guid;
         ga.sectorJumpgate = sectorGate;
-        b.SetupPOI(ga, b.GetRandomPosition(-20f, 20f, -5f, 5f));
+        // Directional: the gate sits on the side facing its peer, so left system's gate
+        // arrives on hub's LEFT and right system's gate on the RIGHT (no crossing).
+        b.SetupPOI(ga, DirectionalPoiPos(b.position, a.position));
         b.pointsOfInterest.Add(ga);
 
         var gb = new JumpGate();
         gb.name = label + " -> " + b.name;       // sits on a, points at b
         gb.targetSystemGuid = b.guid;
-        a.SetupPOI(gb, a.GetRandomPosition(-20f, 20f, -5f, 5f));
+        a.SetupPOI(gb, DirectionalPoiPos(a.position, b.position));
         a.pointsOfInterest.Add(gb);
 
         ga.targetPoiGuid = gb.guid;
@@ -204,6 +206,18 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         ga.UnlockJumpgate();
         gb.UnlockJumpgate();
         return gb;
+    }
+
+    /// <summary>Gate POI position: 12 units out from the system center toward the peer
+    /// system, clamped to the vanilla POI band (±19 x, ±4.5 y).</summary>
+    private static Vector2 DirectionalPoiPos(Vector2 from, Vector2 to)
+    {
+        var d = to - from;
+        var dir = d.sqrMagnitude < 0.0001f ? Vector2.right : d.normalized;
+        var pos = from + dir * 12f;
+        pos.x = Mathf.Clamp(pos.x, -19f, 19f);
+        pos.y = Mathf.Clamp(pos.y, -4.5f, 4.5f);
+        return pos;
     }
 
     /// <summary>Scans the game's settled space and returns the candidate position with

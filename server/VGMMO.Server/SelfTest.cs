@@ -205,6 +205,16 @@ public static class SelfTest
             var saved = File.ReadAllText(Path.Combine(dataDir, "state.json"));
             Check("state has cargo", saved.Contains("Alice") && saved.Contains("Ore"));
 
+            // C11b: kick path must also produce an activity entry (Drop bypassed logging).
+            var bobSession = core.Sessions().FirstOrDefault(s => s.Name == "Bob");
+            if (bobSession != null)
+            {
+                core.Kick(bobSession.Id);
+                bob.Poll(500);
+                Check("kick logs activity", core.Activity.Tail(5).Any(e => e.Kind == "leave" && e.Text.Contains("Bob") && e.Text.Contains("kicked")));
+                await Task.Delay(200);
+            }
+
             // C12: disconnect cleanup
             alice.Send(MsgTypes.Ping, new PingMessage { T = Core.ServerCore.NowMs() });
             alice.Dispose();
@@ -247,7 +257,7 @@ public static class SelfTest
   "systems": [
     { "id": "hub-1", "storyId": "mmo-test-hub", "name": "Hub Transit", "x": 0, "y": 0, "level": 8, "faction": "Gold",
       "pois": [ { "id": "hub-station", "kind": "station", "name": "Hub Starport", "x": 0, "y": 6 } ] },
-    { "id": "mine-1", "storyId": "mmo-test-mine", "name": "Empty Veins", "x": -14, "y": 1, "level": 7, "faction": "MiningGuild",
+    { "id": "mine-1", "storyId": "mmo-test-mine", "name": "Empty Veins", "x": -31, "y": 0, "level": 7, "faction": "MiningGuild",
       "pois": [ { "id": "mine-field", "kind": "mining", "name": "Ore Field", "x": -18, "y": 0 } ] }
   ],
   "links": [ { "a": "hub-1", "b": "mine-1" } ],
