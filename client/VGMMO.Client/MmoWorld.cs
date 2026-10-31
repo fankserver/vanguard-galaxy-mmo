@@ -20,7 +20,10 @@ namespace VGMMO.Client;
 /// </summary>
 public sealed class MmoWorldBuilder : MonoBehaviour
 {
-    private static readonly Vector2 ClusterOrigin = new(30f, 0f);
+    /// <summary>Where the cluster sector goes: recomputed at build time to the spot with
+    /// the most clearance from every existing vanilla sector (GalaxyLayout allocates
+    /// quadrant frames + content rects; we must not sit inside a populated one).</summary>
+    private static readonly Vector2 FallbackOrigin = new(120f, 4f);
 
     private WorldLayout? _layout;
     private bool _built;
@@ -106,7 +109,11 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                 return;
             }
 
-            var sector = (SectorMapData)CreateSectorMethod.Invoke(null, new object[] { ClusterOrigin, "MMO - " + _layout.Name })!;
+            // Find a free spot: max clearance from every existing sector in the same
+            // coordinate frame (sector positions are absolute, per the saved layout).
+            var clusterOrigin = FindClusterOrigin(map);
+
+            var sector = (SectorMapData)CreateSectorMethod.Invoke(null, new object[] { clusterOrigin, "MMO - " + _layout.Name })!;
             sector.SetIdentifier("mmo-sector-" + _layout.Id);
             map.AddSector(sector);
             _sector = sector;
@@ -194,6 +201,34 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         ga.UnlockJumpgate();
         gb.UnlockJumpgate();
         return gb;
+    }
+
+    /// <summary>Scans the game's settled space and returns the candidate position with
+    /// the greatest distance to its nearest existing sector (no overlap, guaranteed).
+    /// Vanilla sectors live on a sparse grid (e.g. Xeradon Belt at (41.8, 21.3)); a naive
+    /// origin like (30,0) lands inside that grid system.</summary>
+    private static Vector2 FindClusterOrigin(GalaxyMapData map)
+    {
+        var sectors = map.allSectors.ToList();
+        if (sectors.Count == 0) return FallbackOrigin;
+        var best = -1f;
+        var bestPos = FallbackOrigin;
+        for (var x = -1400f; x <= 1500f; x += 25f)
+        {
+            for (var y = -350f; y <= 350f; y += 25f)
+            {
+                var c = new Vector2(x, y);
+                var minD = float.MaxValue;
+                foreach (var s in sectors)
+                {
+                    var d = Vector2.Distance(c, s.position);
+                    if (d < minD) minD = d;
+                }
+                if (minD > best) { best = minD; bestPos = c; }
+            }
+        }
+        Log("cluster origin " + bestPos + " (nearest sector " + best.ToString("F0") + " u)");
+        return bestPos;
     }
 
     private void AddPoi(SystemMapData system, LayoutPoi def)
