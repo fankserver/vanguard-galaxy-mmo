@@ -36,7 +36,15 @@ public static class SelfTest
             };
         }
 
-        public void Connect(int port) { _manager.Start(); _manager.Connect(new IPEndPoint(IPAddress.Loopback, port), "vgmmo"); }
+        public void Connect(int port)
+        {
+            _manager.Start();
+            _manager.Connect(new IPEndPoint(IPAddress.Loopback, port), "vgmmo");
+            // Cold-start determinism: wait for the peer handshake instead of a fixed
+            // poll (first run after a rebuild otherwise drops the Hello -> cascade).
+            var until = Environment.TickCount64 + 2000;
+            while (_peer == null && Environment.TickCount64 < until) { _manager.PollEvents(); Thread.Sleep(5); }
+        }
 
         public void Poll(int ms)
         {

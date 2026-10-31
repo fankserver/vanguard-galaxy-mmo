@@ -484,7 +484,7 @@ public sealed class ServerCore
                 Transport?.SendPeer(pid, MsgTypes.RemoteShipState, new RemoteShipState
                 {
                     SessionId = "ghost:" + g.Id, Name = g.Name, FullName = g.FullName,
-                    Title = g.Title, TitleColor = g.TitleColor, SystemId = g.SystemId,
+                    Title = g.Title, TitleColor = g.TitleColor, SystemId = g.SystemId, Faction = "player",
                     X = g.State.X, Y = g.State.Y, Rot = g.State.Rot, Vx = g.State.Vx, Vy = g.State.Vy,
                     Seq = g.State.Seq, Ts = now,
                 }, reliable: false);
@@ -558,7 +558,7 @@ public sealed class ServerCore
         Systems = world.Systems.Select(s => new LayoutSystem
         {
             Id = s.Id, StoryId = s.StoryId, Name = s.Name, X = s.X, Y = s.Y, Level = s.Level, Faction = s.Faction,
-            Pois = s.Pois.Select(p => new LayoutPoi { Id = p.Id, Kind = p.Kind, Name = p.Name, X = p.X, Y = p.Y, Faction = p.Faction, Level = p.Level }).ToList(),
+            Pois = s.Pois.Select(p => new LayoutPoi { Id = p.Id, Kind = p.Kind, Name = p.Name, X = p.X, Y = p.Y, Faction = p.Faction, Level = p.Level, Facilities = p.Facilities }).ToList(),
         }).ToList(),
         Links = world.Links.Select(l =>
         {

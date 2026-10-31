@@ -400,6 +400,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                 {
                     if (System.Enum.TryParse<SpaceStationFacility>(f, out var fac)) facilities.Add(fac);
                 }
+                Log($"station '{def.Id}': author facilities parsed: " + string.Join(",", facilities));
                 if (facilities.Count == 0)
                 {
                     facilities.UnionWith(new[]

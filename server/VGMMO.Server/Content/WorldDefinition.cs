@@ -138,12 +138,27 @@ public static class WorldLoader
         if (string.IsNullOrWhiteSpace(world.Id)) throw new InvalidDataException($"{source}: world id required");
         if (string.IsNullOrWhiteSpace(world.Name)) world.Name = world.Id;
         var ids = new HashSet<string>(StringComparer.Ordinal);
+        // Facility names mirror the game's SpaceStationFacility enum (the server is
+        // game-code-free, so the authoritative name list lives here).
+        var knownFacilities = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "Airlock", "OutpostAirlock", "GeneralShop", "MiningShop", "SalvageShop", "BountyShop",
+            "PatrolShop", "IndustryShop", "ConquestShop", "UmbralShop", "TradeTerminal",
+            "Bar", "Refinery", "Forge", "Shipyard", "MissionBoard", "BountyBoard", "PoliceBoard",
+            "IndustryBoard", "SalvageStation", "SalvageWorkshop", "RecruitmentCenter",
+            "PersonnelCenter", "DryDock", "StationManagement", "ConstructionYard",
+            "PersonalHangar", "ExitSpacestation",
+        };
         foreach (var s in world.Systems)
         {
             if (string.IsNullOrWhiteSpace(s.Id)) throw new InvalidDataException($"{source}: system id required");
             if (!ids.Add(s.Id)) throw new InvalidDataException($"{source}: duplicate system id {s.Id}");
             foreach (var p in s.Pois)
+            {
                 if (string.IsNullOrWhiteSpace(p.Id)) throw new InvalidDataException($"{source}: POI id required in {s.Id}");
+                foreach (var f in p.Facilities)
+                    if (!knownFacilities.Contains(f)) throw new InvalidDataException($"{source}: unknown facility '{f}' on {p.Id} (typo masking would silently fall back to the default set)");
+            }
         }
         foreach (var l in world.Links)
         {
