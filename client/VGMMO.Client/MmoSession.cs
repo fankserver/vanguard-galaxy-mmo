@@ -400,12 +400,10 @@ public sealed class MmoSession : MonoBehaviour
         marker.transform.position = new Vector3(x * scale, y * scale, 0f);
         // Direction: rot is Rigidbody2D degrees (0 = +X forward).
         marker.transform.rotation = Quaternion.Euler(0f, 0f, rot);
-        // Label is a sibling (never rotates with the ship); keep it right above the hull.
+        // Label is parented UNDER the marker — position follows automatically; only
+        // counter-rotate so it stays upright instead of spinning with the ship.
         if (_markerLabels.TryGetValue(key, out var label))
-        {
-            label.transform.position = marker.transform.position + new Vector3(0f, scale * 0.15f, 0f);
-            label.transform.rotation = Quaternion.identity;
-        }
+            label.transform.localRotation = Quaternion.Inverse(marker.transform.rotation);
         // Animations are DERIVED from the transferred doing (velocity), never
         // replicated as data: the protocol carries authoritative state only.
         var speed = Mathf.Sqrt(vx * vx + vy * vy);
@@ -450,9 +448,11 @@ public sealed class MmoSession : MonoBehaviour
             if (name != null && fullName != null)
             {
                 // Title rendered like the character menu: its own colored line above
-                // the name (titleColor from the protocol; fallback white).
+                // the name (titleColor from the protocol; fallback white). Child of
+                // the marker so it tracks the ship; counter-rotated each message.
                 var root = new GameObject("labelRoot");
-                root.transform.SetParent(transform, false);
+                root.transform.SetParent(marker.transform, false);
+                root.transform.localPosition = new Vector3(0f, u * 0.15f, 0f);
                 if (title != null && title.Length > 0)
                 {
                     var t = new GameObject("title").AddComponent<TextMesh>();
