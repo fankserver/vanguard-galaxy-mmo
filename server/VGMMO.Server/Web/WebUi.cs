@@ -197,19 +197,29 @@ function draw(){
       const glyph = ({station:'⬢', mining:'◆', salvage:'☠', gate:'⇄'}[p.kind] || '?');
       ctx.fillText(glyph, px+6, py+3);
     }
-    // Aggregated player marker: one badge per system showing the count, instead of
-    // overlapping per-player dots (real positions are in world space, not layout space).
-    const pIn = (status && status.worlds.flatMap(w=>w.systems).find(w=>w.id===s.id));
-    if (pIn && pIn.players.length){
-      const [px,py]=f.px(s.x,s.y);
-      const bx=px+24, by=py-24;
-      ctx.beginPath(); ctx.arc(bx,by,10,0,Math.PI*2);
-      ctx.fillStyle='#19c8ff'; ctx.fill();
-      ctx.strokeStyle='#0b0d12'; ctx.lineWidth=2.5; ctx.stroke();
-      ctx.fillStyle='#0b0d12'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
-      ctx.fillText(String(pIn.players.length), bx, by+4); ctx.textAlign='left';
-      if (pIn.players.length===1) ctx.fillStyle='#8fd7ff'; else ctx.fillStyle='#ffd27f';
-      ctx.font='9px monospace'; ctx.fillText(pIn.players.join(', '), bx+14, by+3);
+    // Aggregated player marker: real positions in layout coords (client sends world/250),
+    // one dot per player; a count badge appears when several share the system. The old
+    // system-center dots are gone — you see actual movement now.
+    const playersHere = (status && status.playerList || []).filter(p => p.system === s.id && p.pos);
+    if (playersHere.length){
+      for (const p of playersHere){
+        const [px,py]=f.px(p.pos.x, p.pos.y);
+        const col = hashColor(p.name);
+        ctx.beginPath(); ctx.arc(px,py,6,0,Math.PI*2);
+        ctx.fillStyle = col; ctx.fill();
+        ctx.strokeStyle = '#0b0d12'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = col; ctx.font = 'bold 10px monospace';
+        ctx.fillText(p.name, px+9, py+3);
+      }
+      if (playersHere.length > 1){
+        const [px,py]=f.px(s.x,s.y);
+        const bx=px+24, by=py-24;
+        ctx.beginPath(); ctx.arc(bx,by,10,0,Math.PI*2);
+        ctx.fillStyle='#19c8ff'; ctx.fill();
+        ctx.strokeStyle='#0b0d12'; ctx.lineWidth=2.5; ctx.stroke();
+        ctx.fillStyle='#0b0d12'; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+        ctx.fillText(String(playersHere.length), bx, by+4); ctx.textAlign='left';
+      }
     }
   }
 }

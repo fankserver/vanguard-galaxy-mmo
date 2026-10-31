@@ -125,12 +125,15 @@ public sealed class MmoSession : MonoBehaviour
             {
                 var pos = rb.position;
                 var vel = rb.linearVelocity;
+                // Server frame = layout/POI-local coords (the game's own mapping:
+                // world = local * mapToLocalConversion). Authoritative on the server.
+                var scale = MapPointOfInterest.mapToLocalConversion;
                 Send(MsgTypes.ShipState, new ShipStateMessage
                 {
                     SystemId = _clusterSystem,
-                    X = pos.x, Y = pos.y,
+                    X = pos.x / scale, Y = pos.y / scale,
                     Rot = rb.rotation,
-                    Vx = vel.x, Vy = vel.y,
+                    Vx = vel.x / scale, Vy = vel.y / scale,
                     Seq = ++_sendSeq,
                 }, reliable: false);
             }
@@ -268,7 +271,9 @@ public sealed class MmoSession : MonoBehaviour
         }
         var renderer = marker.GetComponent<Renderer>();
         if (renderer != null) renderer.material.color = ColorFor(rs.Name);
-        marker.transform.position = new Vector3(rs.X, rs.Y, 0f);
+        // rs position is in server layout frame; game world = local * mapToLocalConversion.
+        var scale = MapPointOfInterest.mapToLocalConversion;
+        marker.transform.position = new Vector3(rs.X * scale, rs.Y * scale, 0f);
     }
 
     private static Color ColorFor(string name)
