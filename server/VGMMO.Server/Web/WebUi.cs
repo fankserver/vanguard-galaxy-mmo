@@ -84,6 +84,7 @@ public sealed class WebUi
             name = s.Name,
             fullName = s.FullName,
             title = s.Title,
+            ship = s.LastPos?.ShipId ?? "",
             system = s.SystemId ?? "",
             pos = s.LastPos == null ? null : new { x = s.LastPos.X, y = s.LastPos.Y, rot = s.LastPos.Rot },
             pingMs = s.PingMs,
@@ -94,6 +95,7 @@ public sealed class WebUi
             name = g.Name,
             fullName = g.FullName,
             title = g.Title,
+            ship = "",
             system = g.SystemId,
             pos = new { x = g.State.X, y = g.State.Y, rot = g.State.Rot },
             pingMs = 0L,
@@ -108,6 +110,7 @@ public sealed class WebUi
                 name = shadow.Name,
                 fullName = shadow.FullName,
                 title = "",
+                ship = shadow.State.ShipId,
                 system = shadow.SystemId,
                 pos = new { x = shadow.State.X, y = shadow.State.Y, rot = shadow.State.Rot },
                 pingMs = 0L,
@@ -458,7 +461,7 @@ async function refresh(){
     const w = status.worlds[worldIdx];
     $('meta').textContent = `${status.uptimeSec}s up · in cluster ${status.players} · connected ${status.connected} · systems ${w ? w.systems.length : 0}`;
     $('players').innerHTML = '<b>Players</b><br>' + (status.playerList.map(p =>
-      `${p.name} — ${p.system} · ${p.pingMs}ms`).join('<br>') || 'none');
+      `${p.name} — ${p.system}${p.ship ? ' · ' + p.ship : ''} · ${p.pingMs}ms`).join('<br>') || 'none');
     feed(status.activity);
   } else {
     status = null;

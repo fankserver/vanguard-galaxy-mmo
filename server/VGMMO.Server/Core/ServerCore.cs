@@ -268,6 +268,7 @@ public sealed class ServerCore
             Transport?.SendPeer(target, MsgTypes.RemoteShipState, new RemoteShipState
             {
                 SessionId = session.Id, Name = session.Name, SystemId = state.SystemId,
+                ShipId = state.ShipId,
                 X = state.X, Y = state.Y, Rot = state.Rot, Vx = state.Vx, Vy = state.Vy,
                 Seq = state.Seq, Ts = NowMs(),
             }, reliable: false);
@@ -302,7 +303,8 @@ public sealed class ServerCore
         _shadow.State = new ShipStateMessage
         {
             SystemId = state.SystemId,
-            X = state.X + 0.6f,   // ~150 game units to the side (mapToLocalConversion=250)
+            ShipId = state.ShipId,
+            X = state.X + 0.012f,   // ~3 game units — right beside the ship (1/50 of the old 150)
             Y = state.Y,
             Rot = state.Rot, Vx = state.Vx, Vy = state.Vy, Seq = state.Seq,
         };
@@ -310,7 +312,7 @@ public sealed class ServerCore
         {
             SessionId = "shadow:" + session.Id, Name = _shadow.Name,
             FullName = _shadow.FullName, Title = "", TitleColor = "#BDBDBD",
-            SystemId = _shadow.SystemId,
+            SystemId = _shadow.SystemId, ShipId = _shadow.State.ShipId,
             X = _shadow.State.X, Y = _shadow.State.Y, Rot = _shadow.State.Rot,
             Vx = _shadow.State.Vx, Vy = _shadow.State.Vy, Seq = _shadow.State.Seq, Ts = NowMs(),
         };

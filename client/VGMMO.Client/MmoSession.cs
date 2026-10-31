@@ -51,6 +51,8 @@ public sealed class MmoSession : MonoBehaviour
 
     private readonly List<string> _log = new();
     private readonly Dictionary<string, GameObject> _markers = new();
+    private readonly Dictionary<string, string> _markerShip = new();   // session -> cloned ship id
+    private readonly Dictionary<string, GameObject> _markerLabels = new();
 
     public IReadOnlyList<string> LogLines => _log;
 
@@ -148,6 +150,7 @@ public sealed class MmoSession : MonoBehaviour
                 Send(MsgTypes.ShipState, new ShipStateMessage
                 {
                     SystemId = _clusterSystem,
+                    ShipId = CurrentShipId(),
                     X = pos.x / scale, Y = pos.y / scale,
                     Rot = rb.rotation,
                     Vx = vel.x / scale, Vy = vel.y / scale,
@@ -158,6 +161,15 @@ public sealed class MmoSession : MonoBehaviour
     }
 
     private uint _sendSeq;
+
+    /// <summary>Ship class identity (unitData.name = definition display name). Sent so
+    /// remote mirrors can pick matching visuals — and re-clone when the ship is
+    /// swapped, which is authoritative state, not animation.</summary>
+    private string CurrentShipId()
+    {
+        var ship = GameplayManager.Instance?.spaceShip;
+        return ship?.unitData?.name ?? "";
+    }
 
     private static Rigidbody2D? LocalShip()
     {
@@ -302,49 +314,20 @@ public sealed class MmoSession : MonoBehaviour
 
     private void UpdateMarker(RemoteShipState rs)
     {
-        if (!_markers.TryGetValue(rs.SessionId, out var marker) || marker == null)
+        if (!_markers.TryGetValue(rs.SessionId, out var marker) || marker == null
+            || _markerShip.GetValueOrDefault(rs.SessionId) != rs.ShipId)
         {
-            Log($"remote player {rs.Name} appeared @ ({rs.X:F0},{rs.Y:F0})");
-            // Facts dump: verify the mirror frame against the game's own numbers.
-            var cur = GamePlayer.current?.currentSystem;
-            var poiLine = cur == null ? "no system" : string.Join(", ",
-                cur.pointsOfInterest.Select(p => $"{p.name}({p.position.x * MapPointOfInterest.mapToLocalConversion:F0},{p.position.y * MapPointOfInterest.mapToLocalConversion:F0})"));
-            Log($"mirror facts: conversion={MapPointOfInterest.mapToLocalConversion} rs=({rs.X:F2},{rs.Y:F2}) markerWorld=({rs.X * MapPointOfInterest.mapToLocalConversion:F0},{rs.Y * MapPointOfInterest.mapToLocalConversion:F0}) ship={LocalShip()?.position} pois=[{poiLine}]");
-            try
+            if (marker != null)
             {
-                marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                var col = marker.GetComponent<Collider>();
-                if (col != null) Destroy(col);
-                // Game units: 1 layout unit = mapToLocalConversion. A raw 3-unit
-                // sphere is dust at POI scale (station at ~1500 units) — size the
-                // marker like a small ship and keep the label readable from meters.
-                var u = MapPointOfInterest.mapToLocalConversion;   // 250
-                marker.transform.localScale = new Vector3(u * 0.15f, u * 0.15f, u * 0.15f);
-                marker.transform.SetParent(transform, worldPositionStays: true);
-                // Elongated along +X (ship forward) so rotation reads as direction.
-                marker.transform.localScale = new Vector3(u * 0.3f, u * 0.14f, u * 0.14f);
-                // Thruster flame (animations): hidden unless the ship is moving.
-                var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                var fc = flame.GetComponent<Collider>();
-                if (fc != null) Destroy(fc);
-                flame.name = "flame";
-                flame.transform.SetParent(marker.transform, false);
-                flame.transform.localPosition = new Vector3(-u * 0.24f, 0f, 0f);
-                flame.transform.localScale = new Vector3(u * 0.12f, u * 0.07f, u * 0.07f);
-                flame.GetComponent<Renderer>().material.color = new Color(1f, 0.55f, 0.1f);
-                flame.SetActive(false);
-                var name = new GameObject("label").AddComponent<TextMesh>();
-                name.transform.SetParent(marker.transform, false);
-                name.transform.localPosition = new Vector3(0f, u * 0.3f, 0f);
-                // Other players see FULL NAME + TITLE (nickname only as fallback).
-                name.text = (rs.Title.Length > 0 ? rs.Title + " " : "") + (rs.FullName.Length > 0 ? rs.FullName : rs.Name);
-                name.characterSize = u * 0.035f;
-                name.fontSize = 32;
-                name.color = Color.white;
-                _markers[rs.SessionId] = marker;
+                Destroy(marker);
+                _markers.Remove(rs.SessionId);
+                _markerShip.Remove(rs.SessionId);
+                if (_markerLabels.Remove(rs.SessionId, out var old)) Destroy(old.gameObject);
             }
-            catch (System.Exception e) { Log("marker: " + e.Message); return; }
+            CreateRemoteMarker(rs);
         }
+        marker = _markers.GetValueOrDefault(rs.SessionId);
+        if (marker == null) return;
         var renderer = marker.GetComponent<Renderer>();
         if (renderer != null) renderer.material.color = ColorFor(rs.Name);
         // rs position is in server layout frame; game world = local * mapToLocalConversion.
@@ -352,9 +335,11 @@ public sealed class MmoSession : MonoBehaviour
         marker.transform.position = new Vector3(rs.X * scale, rs.Y * scale, 0f);
         // Direction: rot is Rigidbody2D degrees (0 = +X forward).
         marker.transform.rotation = Quaternion.Euler(0f, 0f, rs.Rot);
+        // Keep the label upright (it would otherwise spin with the ship).
+        if (_markerLabels.TryGetValue(rs.SessionId, out var label))
+            label.transform.rotation = Quaternion.identity;
         // Animations are DERIVED from the transferred doing (velocity), never
-        // replicated as data: the protocol carries authoritative state only
-        // (position/rotation/velocity), the renderer turns it into visuals.
+        // replicated as data: the protocol carries authoritative state only.
         var speed = Mathf.Sqrt(rs.Vx * rs.Vx + rs.Vy * rs.Vy);
         var flameChild = marker.transform.Find("flame");
         if (flameChild != null)
@@ -367,6 +352,102 @@ public sealed class MmoSession : MonoBehaviour
                 flameChild.localScale = new Vector3(scale * 0.12f * k, scale * 0.07f * k, scale * 0.07f * k);
             }
         }
+    }
+
+    private void CreateRemoteMarker(RemoteShipState rs)
+    {
+        Log($"remote player {rs.Name} appeared @ ({rs.X:F0},{rs.Y:F0}) ship '{rs.ShipId}'");
+        // Facts dump: verify the mirror frame against the game's own numbers.
+        var cur = GamePlayer.current?.currentSystem;
+        var poiLine = cur == null ? "no system" : string.Join(", ",
+            cur.pointsOfInterest.Select(p => $"{p.name}({p.position.x * MapPointOfInterest.mapToLocalConversion:F0},{p.position.y * MapPointOfInterest.mapToLocalConversion:F0})"));
+        Log($"mirror facts: conversion={MapPointOfInterest.mapToLocalConversion} rs=({rs.X:F2},{rs.Y:F2}) markerWorld=({rs.X * MapPointOfInterest.mapToLocalConversion:F0},{rs.Y * MapPointOfInterest.mapToLocalConversion:F0}) ship={LocalShip()?.position} pois=[{poiLine}]");
+        try
+        {
+            var u = MapPointOfInterest.mapToLocalConversion;   // 250
+            var marker = BuildShipVisual(rs.ShipId);
+            if (marker == null)
+            {
+                // No ship visual available — primitive fallback with direction + flame.
+                marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                var col = marker.GetComponent<Collider>();
+                if (col != null) Destroy(col);
+                marker.transform.localScale = new Vector3(u * 0.3f, u * 0.14f, u * 0.14f);
+                var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                var fc = flame.GetComponent<Collider>();
+                if (fc != null) Destroy(fc);
+                flame.name = "flame";
+                flame.transform.SetParent(marker.transform, false);
+                flame.transform.localPosition = new Vector3(-u * 0.24f, 0f, 0f);
+                flame.transform.localScale = new Vector3(u * 0.12f, u * 0.07f, u * 0.07f);
+                flame.GetComponent<Renderer>().material.color = new Color(1f, 0.55f, 0.1f);
+                flame.SetActive(false);
+            }
+            marker.transform.SetParent(transform, false);
+            var name = new GameObject("label").AddComponent<TextMesh>();
+            name.transform.position = Vector3.zero;
+            name.transform.SetParent(transform, false);
+            name.text = (rs.Title.Length > 0 ? rs.Title + " " : "") + (rs.FullName.Length > 0 ? rs.FullName : rs.Name);
+            name.characterSize = u * 0.035f;
+            name.fontSize = 32;
+            name.color = Color.white;
+            _markers[rs.SessionId] = marker;
+            _markerShip[rs.SessionId] = rs.ShipId;
+            _markerLabels[rs.SessionId] = name.gameObject;
+        }
+        catch (System.Exception e) { Log("marker: " + e.Message); }
+        return;
+    }
+
+    /// <summary>Builds a 1:1 visual copy of the ship identified by `shipId` — same sprites,
+    /// same relative layout — so the mirror looks like the actual ship the pilot flies
+    /// (including after a ship swap). Sources: the local ship when the class matches,
+    /// else the fleet's ship data definition; null when neither matches.</summary>
+    private GameObject? BuildShipVisual(string shipId)
+    {
+        var root = new GameObject("mirror-ship");
+        var local = LocalShip();
+        var localId = CurrentShipId();
+        Transform? src = null;
+        if (shipId.Length == 0 || shipId == localId) src = local != null ? local.transform : null;
+        if (src == null && shipId.Length > 0)
+        {
+            var def = GamePlayer.current?.spaceShips?.FirstOrDefault(d => d.name == shipId)?.unitDefinition;
+            if (def != null) src = def.transform;
+        }
+        if (src == null) { Destroy(root); return null; }
+        root.transform.localScale = src.lossyScale;
+        var n = CloneRenderers(root.transform, src, src);
+        Log($"mirror: ship visual '{shipId}' — {n} sprites from '{src.name}'");
+        return root;
+    }
+
+    private static int CloneRenderers(Transform dstRoot, Transform srcRoot, Transform relativeTo)
+    {
+        var count = 0;
+        var relScale = relativeTo.lossyScale;
+        var invRelRot = Quaternion.Inverse(relativeTo.rotation);
+        foreach (var sr in srcRoot.GetComponentsInChildren<SpriteRenderer>(true))
+        {
+            if (sr.sprite == null) continue;
+            var go = new GameObject(sr.name);
+            go.transform.SetParent(dstRoot, false);
+            go.transform.localPosition = relativeTo.InverseTransformPoint(sr.transform.position);
+            go.transform.localRotation = invRelRot * sr.transform.rotation;
+            var ls = sr.transform.lossyScale;
+            go.transform.localScale = new Vector3(ls.x / relScale.x, ls.y / relScale.y, ls.z / relScale.z);
+            var r = go.AddComponent<SpriteRenderer>();
+            r.sprite = sr.sprite;
+            r.color = sr.color;
+            r.flipX = sr.flipX; r.flipY = sr.flipY;
+            r.sortingLayerID = sr.sortingLayerID;
+            r.sortingOrder = sr.sortingOrder;
+            r.material = sr.material;
+            r.drawMode = sr.drawMode;
+            r.size = sr.size;
+            count++;
+        }
+        return count;
     }
 
     private static Color ColorFor(string name)

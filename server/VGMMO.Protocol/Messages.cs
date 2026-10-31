@@ -208,6 +208,7 @@ public sealed class SystemLeftMessage
 public sealed class ShipStateMessage
 {
     public string SystemId = "";
+    public string ShipId = "";      // ship class display name (unitData.name) — mirror visuals
     public float X;
     public float Y;
     public float Rot;
@@ -226,6 +227,7 @@ public sealed class RemoteShipState
     public string Title = "";         // selected title display name
     public string TitleColor = "";    // hex color of the title
     public string SystemId = "";
+    public string ShipId = "";        // ship class display name — mirror visuals
     public float X;
     public float Y;
     public float Rot;
