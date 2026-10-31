@@ -309,14 +309,20 @@ public sealed class MmoSession : MonoBehaviour
                 marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 var col = marker.GetComponent<Collider>();
                 if (col != null) Destroy(col);
-                marker.transform.localScale = new Vector3(3f, 3f, 1f);
+                // Game units: 1 layout unit = mapToLocalConversion. A raw 3-unit
+                // sphere is dust at POI scale (station at ~1500 units) — size the
+                // marker like a small ship and keep the label readable from meters.
+                var u = MapPointOfInterest.mapToLocalConversion;   // 250
+                marker.transform.localScale = new Vector3(u * 0.15f, u * 0.15f, u * 0.15f);
                 marker.transform.SetParent(transform, worldPositionStays: true);
                 var name = new GameObject("label").AddComponent<TextMesh>();
                 name.transform.SetParent(marker.transform, false);
-                name.transform.localPosition = new Vector3(0f, 2.2f, 0f);
+                name.transform.localPosition = new Vector3(0f, u * 0.3f, 0f);
                 // Other players see FULL NAME + TITLE (nickname only as fallback).
                 name.text = (rs.Title.Length > 0 ? rs.Title + " " : "") + (rs.FullName.Length > 0 ? rs.FullName : rs.Name);
-                name.characterSize = 0.18f;
+                name.characterSize = u * 0.035f;
+                name.fontSize = 32;
+                name.color = Color.white;
                 _markers[rs.SessionId] = marker;
             }
             catch (System.Exception e) { Log("marker: " + e.Message); return; }
