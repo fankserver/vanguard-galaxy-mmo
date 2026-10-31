@@ -5,5 +5,6 @@
   "worldsDir": "worlds",
   "maxPeers": 64,
   "maxPlayersPerWorld": 32,
-  "acceptedHashes": []
+  "acceptedHashes": [],
+  "ghostPilots": 2
 }

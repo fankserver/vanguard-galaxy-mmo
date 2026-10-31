@@ -88,7 +88,17 @@ public sealed class WebUi
             pos = s.LastPos == null ? null : new { x = s.LastPos.X, y = s.LastPos.Y, rot = s.LastPos.Rot },
             pingMs = s.PingMs,
             game = s.GameVersion,
-        });
+        })
+            .Concat(_core.Ghosts.Select(g => new
+        {
+            name = g.Name,
+            fullName = g.FullName,
+            title = g.Title,
+            system = g.SystemId,
+            pos = new { x = g.State.X, y = g.State.Y, rot = g.State.Rot },
+            pingMs = 0L,
+            game = "ghost",
+        }));
         return new
         {
             uptimeSec = (long)(DateTime.UtcNow - _core.StartedAt).TotalSeconds,

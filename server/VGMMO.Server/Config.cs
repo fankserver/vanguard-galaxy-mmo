@@ -11,6 +11,9 @@ public sealed class ServerConfig
     public string AssetsDir { get; set; } = "assets";
     public int MaxPeers { get; set; } = 64;
     public int MaxPlayersPerWorld { get; set; } = 32;
+    /// <summary>Number of simulated pilots (see Core.GhostPilot) that patrol the hosted
+    /// systems; 0 disables. They appear on the web map and in in-game mirrors.</summary>
+    public int GhostPilots { get; set; } = 2;
     /// <summary>Accepted client-build hashes. Empty list = accept any (dev mode).</summary>
     public List<string> AcceptedHashes { get; set; } = new();
 

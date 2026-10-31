@@ -14,6 +14,7 @@ public static class Program
         var config = ServerConfig.Load(FindArg(args, "--config") ?? "server.json");
         if (TryInt(args, "--port", out var p)) config.Port = p;
         if (TryInt(args, "--web-port", out var wp)) config.WebPort = wp;
+        if (TryInt(args, "--ghosts", out var g)) config.GhostPilots = g;
         if (FindArg(args, "--data") is { } data) config.DataDir = data;
         if (FindArg(args, "--worlds") is { } worlds) config.WorldsDir = worlds;
 

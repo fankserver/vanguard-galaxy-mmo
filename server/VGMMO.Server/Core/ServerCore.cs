@@ -34,8 +34,12 @@ public sealed class ServerCore
     private readonly Dictionary<string, HashSet<int>> _groups = new(StringComparer.Ordinal); // "world/system" -> peerIds
     private readonly Dictionary<string, uint> _eventSeq = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _worldStartMs = new(StringComparer.Ordinal);
+    private readonly List<GhostPilot> _ghosts = new();
+    private long _lastGhostMs;
     private long _lastSaveMs;
     private readonly object _gate = new();
+
+    public IReadOnlyList<GhostPilot> Ghosts => _ghosts;
 
     public ServerConfig Config { get; }
     public LedgerStore Ledger { get; } = new();
@@ -361,8 +365,50 @@ public sealed class ServerCore
                 if (!s.HelloReceived && now - s.ConnectedAtMs > 5000) Drop(s, "hello timeout");
                 else if (s.HelloReceived && now - s.LastActivityMs > 30000) Drop(s, "idle timeout");
             }
+            TickGhosts(now);
             Planner.Tick();
             if (_dirty && now - _lastSaveMs > 60000) { _lastSaveMs = now; SaveState(); }
+        }
+    }
+
+    // ---------- simulated pilots ----------
+
+    private void InitGhosts()
+    {
+        var world = _worlds.Values.FirstOrDefault();
+        if (world == null || world.Systems.Count == 0) return;
+        var names = new[] { "Vega", "Orion" };
+        var fulls = new[] { "Vega Sable", "Orion Vale" };
+        for (var i = 0; i < Config.GhostPilots; i++)
+        {
+            var sys = world.Systems[i % world.Systems.Count];
+            var g = new GhostPilot("g" + (i + 1), names[i % names.Length], fulls[i % fulls.Length], "Hauler",
+                sys.Id, sys.X, sys.Y, 12f + i * 2f, 8f + i, 0.2f);
+            _ghosts.Add(g);
+            Activity.Add("join", $"{g.Name} entered {sys.Id}", sys.Id);
+            Log($"ghost pilot {g.Name} in {sys.Id}");
+        }
+    }
+
+    private void TickGhosts(long now)
+    {
+        if (Config.GhostPilots <= 0) return;
+        if (_ghosts.Count == 0) InitGhosts();
+        var dt = _lastGhostMs == 0 ? 0.1f : Math.Clamp((now - _lastGhostMs) / 1000f, 0.02f, 0.5f);
+        _lastGhostMs = now;
+        foreach (var g in _ghosts)
+        {
+            g.Tick(dt);
+            foreach (var pid in Group(g.SystemId))
+            {
+                Transport?.SendPeer(pid, MsgTypes.RemoteShipState, new RemoteShipState
+                {
+                    SessionId = "ghost:" + g.Id, Name = g.Name, FullName = g.FullName,
+                    Title = g.Title, TitleColor = g.TitleColor, SystemId = g.SystemId,
+                    X = g.State.X, Y = g.State.Y, Rot = g.State.Rot, Vx = g.State.Vx, Vy = g.State.Vy,
+                    Seq = g.State.Seq, Ts = now,
+                }, reliable: false);
+            }
         }
     }
 
