@@ -93,28 +93,49 @@ public static class IconExporter
         }
     }
 
-    /// <summary>Extracts one sprite from its atlas (the game's textures are packed, so
-    /// the sub-rect MUST be cropped) at raw 1:1 pixels — no trimming, no resampling.
-    /// Returns null on failure.</summary>
+    /// <summary>Extracts one sprite as PNG by RENDERING it through a SpriteRenderer +
+    /// orthographic camera — respects the sprite's pivot/mesh, so atlas-packed sprites
+    /// come out exactly as the game draws them (the GL-rect grab decoded library icons
+    /// as dark garbage). Raw 1:1 pixels, no trimming/resampling.</summary>
     private static byte[]? CropPng(Sprite sprite)
     {
-        var tex = sprite.texture;
-        var rect = sprite.textureRect;
-        var w = Mathf.Max(1, (int)rect.width);
-        var h = Mathf.Max(1, (int)rect.height);
+        var w = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.width));
+        var h = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.height));
+
+        var go = new GameObject("_vgmmo_icon");
+        go.transform.position = sprite.bounds.center;
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sprite;
+
+        var camGo = new GameObject("_vgmmo_iconcam");
+        var cam = camGo.AddComponent<Camera>();
+        cam.orthographic = true;
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        cam.nearClipPlane = -100f;
+        cam.farClipPlane = 100f;
+        cam.transform.position = sprite.bounds.center + Vector3.back * 10f;
+        var size = Mathf.Max(sprite.bounds.extents.y, sprite.bounds.extents.x / (w / (float)h)) * 1.02f;
+        cam.orthographicSize = size;
+        cam.aspect = w / (float)h;
+        cam.enabled = false;
+
         var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+        cam.targetTexture = rt;
+        cam.Render();
+
+        var crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
         var prevActive = RenderTexture.active;
         RenderTexture.active = rt;
-        GL.Clear(true, true, new Color(0f, 0f, 0f, 0f));
-        var uv = new Rect(rect.x / tex.width, rect.y / tex.height, rect.width / tex.width, rect.height / tex.height);
-        Graphics.DrawTexture(new Rect(0f, 0f, w, h), tex, uv, 0, 0, 0, 0, Color.white);
-        var crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
         crop.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
         crop.Apply();
         RenderTexture.active = prevActive;
+        cam.targetTexture = null;
         RenderTexture.ReleaseTemporary(rt);
         var png = crop.EncodeToPNG();
         Object.Destroy(crop);
+        Object.Destroy(camGo);
+        Object.Destroy(go);
         return png;
     }
 }
