@@ -11,9 +11,8 @@ using UnityEngine.SceneManagement;
 namespace VGMMO.Client;
 
 /// <summary>
-/// Dev hook: exports the in-game galaxy-map POI icons (WorldMapPOI prefab sprites,
-/// rendered in an isolated scene) to PNG, so the web UI can reuse the
-/// exact same icons. Enable via config [test] exportIconsPath.
+/// Exports galaxy-map sprites as isolated PNGs for the web UI.
+/// Enable via config [test] exportIconsPath.
 /// </summary>
 public static class IconExporter
 {
@@ -61,8 +60,7 @@ public static class IconExporter
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: {e.Message}"); }
             }
-            // The map uses FactionIconSet.mapIcon (tinySize, falling back to fullSize).
-            // Names such as LuminateSmall are real emblems, not sprite sheets.
+            // Match the map's tinySize -> fullSize emblem selection.
             var factionSets = Resources.FindObjectsOfTypeAll<FactionIconSet>();
             foreach (Faction faction in Faction.all)
             {
@@ -103,8 +101,7 @@ public static class IconExporter
             }
             catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning("[icons] poi library: " + e.Message); }
 
-            // All exports happen in one frame: catch deferred-Destroy contamination
-            // by rendering each main sprite again in reverse order after the batch.
+            // Verify same-frame render isolation before writing the batch.
             if (prefabExported.Count != Kinds.Length)
                 throw new System.InvalidOperationException("Incomplete map POI export; keeping existing files");
             foreach (var kind in Kinds.Reverse())
@@ -126,8 +123,8 @@ public static class IconExporter
         }
     }
 
-    /// <summary>Renders the sprite mesh/UVs, including packed atlas rotation, without
-    /// capturing the live game or other exports. Retains the existing 2% framing margin.</summary>
+    /// <summary>Renders sprite mesh/UVs with packed atlas rotation and a 2% framing
+    /// margin, isolated from the live game and other exports.</summary>
     private static byte[] CropPng(Sprite sprite, Scene exportScene, bool requireTransparentCorners = false)
     {
         var w = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.width));
@@ -150,7 +147,7 @@ public static class IconExporter
             cam = camGo.AddComponent<Camera>();
             cam.enabled = false;
             cam.scene = exportScene;
-            // Camera.scene alone does not exclude the live backdrop in the player.
+            // Layer culling excludes live backdrop geometry in player builds.
             cam.cullingMask = 1 << go.layer;
             cam.orthographic = true;
             cam.clearFlags = CameraClearFlags.SolidColor;
