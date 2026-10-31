@@ -219,6 +219,7 @@ public sealed class ServerCore
             ServerTimeMs = NowMs(),
             LayoutHash = world.ComputeLayoutHash(),
             Systems = world.Systems.Select(s => new WelcomeSystem { Id = s.Id, StoryId = s.StoryId }).Where(s => s.StoryId.Length > 0).ToList(),
+            World = ToLayout(world),
         });
         Log($"hello: {session.Name} (game {session.GameVersion}, build {HelloTrim(session.BuildHash)}) -> {session.Id}");
     }
@@ -405,6 +406,18 @@ public sealed class ServerCore
     {
         lock (_gate) return _byId.Count;
     }
+
+    private static WorldLayout ToLayout(WorldDefinition world) => new()
+    {
+        Id = world.Id,
+        Name = world.Name,
+        Systems = world.Systems.Select(s => new LayoutSystem
+        {
+            Id = s.Id, StoryId = s.StoryId, Name = s.Name, X = s.X, Y = s.Y, Level = s.Level, Faction = s.Faction,
+            Pois = s.Pois.Select(p => new LayoutPoi { Id = p.Id, Kind = p.Kind, Name = p.Name, X = p.X, Y = p.Y, Faction = p.Faction, Level = p.Level }).ToList(),
+        }).ToList(),
+        Links = world.Links.Select(l => new LayoutLink { A = l.A, B = l.B }).ToList(),
+    };
 
     public void Kick(string sessionId)
     {

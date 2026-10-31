@@ -98,12 +98,53 @@ public sealed class WelcomeResponse
     /// <summary>Hosted systems: storyId -> system id. A client is "in the MMO cluster"
     /// when its current in-game system's storyId is in here.</summary>
     public List<WelcomeSystem> Systems { get; set; } = new();
+    /// <summary>Full authored world layout — the client materializes it in-game (M1).</summary>
+    public WorldLayout? World { get; set; }
 }
 
 public sealed class WelcomeSystem
 {
     public string Id = "";
     public string StoryId = "";
+}
+
+// ---- Authored world layout (mirrors server worlds/*.json; pure data) ----
+
+public sealed class WorldLayout
+{
+    public string Id = "";
+    public string Name = "";
+    public List<LayoutSystem> Systems { get; set; } = new();
+    public List<LayoutLink> Links { get; set; } = new();
+}
+
+public sealed class LayoutSystem
+{
+    public string Id = "";
+    public string StoryId = "";
+    public string Name = "";
+    public float X;
+    public float Y;
+    public int Level = 1;
+    public string Faction = "";
+    public List<LayoutPoi> Pois { get; set; } = new();
+}
+
+public sealed class LayoutPoi
+{
+    public string Id = "";
+    public string Kind = "";
+    public string Name = "";
+    public float X;
+    public float Y;
+    public string Faction = "";
+    public int Level = 1;
+}
+
+public sealed class LayoutLink
+{
+    public string A = "";
+    public string B = "";
 }
 
 public sealed class RefusedResponse

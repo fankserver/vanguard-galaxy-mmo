@@ -13,6 +13,7 @@ public sealed class MmoPlugin : BaseUnityPlugin
     internal BepInEx.Logging.ManualLogSource LogSource = null!;
     internal MmoSession Session = null!;
     internal MmoUi Ui = null!;
+    internal MmoWorldBuilder World = null!;
 
     public ConfigEntry<string> Host = null!;
     public ConfigEntry<int> Port = null!;
@@ -39,6 +40,7 @@ public sealed class MmoPlugin : BaseUnityPlugin
         DontDestroyOnLoad(go);
         Session = go.AddComponent<MmoSession>();
         Ui = go.AddComponent<MmoUi>();
+        World = go.AddComponent<MmoWorldBuilder>();
 
         Logger.LogInfo("VGMMO client loaded (autoConnect=" + AutoConnect.Value + ")");
         if (AutoConnect.Value)

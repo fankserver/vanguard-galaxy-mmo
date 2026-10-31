@@ -60,6 +60,7 @@ public sealed class MmoSession : MonoBehaviour
             if (info.Reason == DisconnectReason.Timeout) Log("server unreachable/timeout");
             else Log("disconnected: " + info.Reason);
             Status = "disconnected";
+            MmoPlugin.Instance?.World.RequestTeardown();
         };
         _listener.NetworkReceiveEvent += (peer, reader, channel, delivery) =>
         {
@@ -169,6 +170,7 @@ public sealed class MmoSession : MonoBehaviour
         _net?.Stop();
         Status = "disconnected";
         Log("disconnected");
+        MmoPlugin.Instance?.World.RequestTeardown();
     }
 
     private void OnPeerConnected(NetPeer peer)
@@ -196,6 +198,7 @@ public sealed class MmoSession : MonoBehaviour
                 foreach (var s in w?.Systems ?? new List<WelcomeSystem>())
                     if (!string.IsNullOrEmpty(s.StoryId)) _hosted[s.StoryId] = s.Id;
                 Log($"welcome: session {_sessionId} world {w?.WorldId} (layout {w?.LayoutHash?[..12]}) hosted {_hosted.Count} systems");
+                MmoPlugin.Instance?.World.SetLayout(w?.World);
                 break;
             case MsgTypes.SystemEntered:
                 var se = Wire.Read<SystemEnteredMessage>(env);
