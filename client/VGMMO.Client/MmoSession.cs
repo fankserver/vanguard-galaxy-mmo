@@ -172,11 +172,17 @@ public sealed class MmoSession : MonoBehaviour
                     Seq = ++_sendSeq,
                     Companions = comps,
                 }, reliable: false);
+                if (comps.Count != _lastCompanionCount)
+                {
+                    _lastCompanionCount = comps.Count;
+                    Log($"shipstate: {comps.Count} deployed fighters");
+                }
             }
         }
     }
 
     private uint _sendSeq;
+    private int _lastCompanionCount = -1;
 
     /// <summary>Ship class identity (unitData.name = definition display name). Sent so
     /// remote mirrors can pick matching visuals — and re-clone when the ship is

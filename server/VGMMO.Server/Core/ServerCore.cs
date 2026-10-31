@@ -273,8 +273,15 @@ public sealed class ServerCore
                 Seq = state.Seq, Ts = NowMs(), Companions = state.Companions,
             }, reliable: false);
         }
+        if (state.Companions.Count != _lastCompanionRelay)
+        {
+            _lastCompanionRelay = state.Companions.Count;
+            Log($"relay {session.Name}: {state.Companions.Count} companions in {state.SystemId}");
+        }
         RelayShadow(session, state);
     }
+
+    private int _lastCompanionRelay = -1;
 
     // ---------- shadow replica (test mode) ----------
 
