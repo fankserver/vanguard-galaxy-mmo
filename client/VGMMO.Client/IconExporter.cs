@@ -6,12 +6,13 @@ using Behaviour.UI;
 using Behaviour.UI.Tooltip;
 using Source.Galaxy;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace VGMMO.Client;
 
 /// <summary>
 /// Dev hook: exports the in-game galaxy-map POI icons (WorldMapPOI prefab sprites,
-/// cropped from their atlas via textureRect) to PNG, so the web UI can reuse the
+/// rendered in an isolated scene) to PNG, so the web UI can reuse the
 /// exact same icons. Enable via config [test] exportIconsPath.
 /// </summary>
 public static class IconExporter
@@ -23,9 +24,11 @@ public static class IconExporter
 
     public static void Export(string dir)
     {
+        Scene exportScene = default;
         try
         {
             Directory.CreateDirectory(dir);
+            exportScene = SceneManager.CreateScene("VGMMO Icon Export");
             // Keys exported from WorldMapPOI prefabs below; the PoiIconLibrary loop
             // skips these (the shipped library asset points every key at the same
             // red-X error placeholder — NOT the real map icons).
@@ -42,7 +45,8 @@ public static class IconExporter
                     {
                         var sprite = renderers[i].sprite;
                         if (sprite == null) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind} r{i}: no sprite"); continue; }
-                        var png = CropPng(sprite);
+                        MmoPlugin.Instance?.LogSource.LogInfo($"[icons] {kind} r{i}: sprite={sprite.name}, rect={sprite.rect}, bounds={sprite.bounds}, drawMode={renderers[i].drawMode}");
+                        var png = CropPng(sprite, exportScene);
                         if (png == null) continue;
                         var path = Path.Combine(dir, kind + ".r" + i + ".png");
                         File.WriteAllBytes(path, png);
@@ -61,44 +65,22 @@ public static class IconExporter
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: {e.Message}"); }
             }
-            // Real map icons: per-faction. Canonical source is Resources/Sprites/
-            // FactionIcons/<id>Icon (what Faction.GetIcon() loads) — but that folder is
-            // not shipped in the player build (LoadAll returns empty). Fallback chain:
-            // all FactionIconSet instances (diagnostic log) -> non-collage mapIcon.
-            var factionFolder = Resources.LoadAll<Sprite>("Sprites/FactionIcons");
-            MmoPlugin.Instance?.LogSource.LogInfo($"[icons] FactionIcons folder contains: " + string.Join(", ", factionFolder.Select(s => s.name).Distinct()));
-            foreach (var diag in Resources.FindObjectsOfTypeAll<FactionIconSet>())
-            {
-                var mi = diag.mapIcon;
-                MmoPlugin.Instance?.LogSource.LogInfo($"[icons] FactionIconSet '{diag.name}' mapIcon='{(mi != null ? mi.name : "null")}' tiny='{(diag.tinySize != null ? diag.tinySize.name : "null")}' full='{(diag.fullSize != null ? diag.fullSize.name : "null")}'");
-            }
+            // The map uses FactionIconSet.mapIcon (tinySize, falling back to fullSize).
+            // Names such as LuminateSmall are real emblems, not sprite sheets.
+            var factionSets = Resources.FindObjectsOfTypeAll<FactionIconSet>();
             foreach (Faction faction in Faction.all)
             {
                 try
                 {
-                    Sprite sprite = null;
-                    foreach (var set in Resources.FindObjectsOfTypeAll<FactionIconSet>())
-                    {
-                        if (set.name != faction.identifier) continue;
-                        var mi = set.mapIcon;
-                        if (mi == null || mi.name.EndsWith("Small")) continue;   // collage sheet — wrong instance
-                        sprite = mi; break;
-                    }
+                    Sprite? sprite = FactionIconSet.Get(faction)?.mapIcon;
+                    if (sprite == null)
+                        sprite = factionSets.FirstOrDefault(set => set.name == faction.identifier && set.mapIcon != null)?.mapIcon;
                     if (sprite == null)
                     {
-                        var set = FactionIconSet.Get(faction);
-                        var mi = set?.mapIcon;
-                        if (mi != null && !mi.name.EndsWith("Small")) sprite = mi;
-                    }
-                    // '<Shipset>Small' sprites are ship-skin collage sheets grabbed from
-                    // wrong same-named FactionIconSet instances (dict filled by Awake
-                    // order) — never the map emblem. Skip instead of clobbering good PNGs.
-                    if (sprite == null || sprite.name.EndsWith("Small"))
-                    {
-                        MmoPlugin.Instance?.LogSource.LogWarning($"[icons] faction {faction.identifier}: skipping sprite '{sprite?.name}' (not a map emblem)");
+                        MmoPlugin.Instance?.LogSource.LogWarning($"[icons] faction {faction.identifier}: no map emblem");
                         continue;
                     }
-                    var png = CropPng(sprite);
+                    var png = CropPng(sprite, exportScene);
                     if (png == null) continue;
                     var path = Path.Combine(dir, "Faction_" + faction.identifier + ".png");
                     File.WriteAllBytes(path, png);
@@ -118,7 +100,7 @@ public static class IconExporter
                     foreach (var entry in lib.entries)
                     {
                         if (entry.sprite == null || prefabExported.Contains(entry.key)) continue;
-                        var png = CropPng(entry.sprite); // POI icons: raw sub-rect, 1:1
+                        var png = CropPng(entry.sprite, exportScene);
                         if (png == null) continue;
                         var key = entry.key.Replace('.', '_').Replace('/', '_');
                         var path = Path.Combine(dir, "Poi_" + key + ".png");
@@ -130,56 +112,81 @@ public static class IconExporter
             }
             catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning("[icons] poi library: " + e.Message); }
 
-            MmoPlugin.Instance?.LogSource.LogInfo("[icons] done.");
+            // All exports happen in one frame: catch deferred-Destroy contamination
+            // by rendering each main sprite again in reverse order after the batch.
+            foreach (var kind in Kinds.Reverse())
+            {
+                if (!prefabExported.Contains(kind)) continue;
+                var repeated = CropPng(WorldMapPOI.GetPrefab(kind).spriteRenderer.sprite, exportScene);
+                if (!File.ReadAllBytes(Path.Combine(dir, "Poi_" + kind + ".png")).SequenceEqual(repeated))
+                    throw new System.InvalidOperationException($"Render-order independence failed for {kind}");
+            }
+            MmoPlugin.Instance?.LogSource.LogInfo($"[icons] render-order independence passed for {prefabExported.Count} POI icons; done.");
         }
         catch (System.Exception e)
         {
             MmoPlugin.Instance?.LogSource.LogWarning("[icons] export failed: " + e.Message);
         }
+        finally
+        {
+            if (exportScene.IsValid()) SceneManager.UnloadSceneAsync(exportScene);
+        }
     }
 
-    /// <summary>Extracts one sprite as PNG by RENDERING it through a SpriteRenderer +
-    /// orthographic camera — respects the sprite's pivot/mesh, so atlas-packed sprites
-    /// come out exactly as the game draws them. Raw 1:1 pixels, no trimming/resampling.</summary>
-    private static byte[]? CropPng(Sprite sprite)
+    /// <summary>Renders the sprite mesh/UVs, including packed atlas rotation, without
+    /// capturing the live game or other exports. Retains the existing 2% framing margin.</summary>
+    private static byte[] CropPng(Sprite sprite, Scene exportScene)
     {
         var w = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.width));
         var h = Mathf.Max(1, Mathf.RoundToInt(sprite.rect.height));
-
-        var go = new GameObject("_vgmmo_icon");
-        go.transform.position = sprite.bounds.center;
-        var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = sprite;
-
-        var camGo = new GameObject("_vgmmo_iconcam");
-        var cam = camGo.AddComponent<Camera>();
-        cam.orthographic = true;
-        cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        cam.nearClipPlane = -100f;
-        cam.farClipPlane = 100f;
-        cam.transform.position = sprite.bounds.center + Vector3.back * 10f;
-        var size = Mathf.Max(sprite.bounds.extents.y, sprite.bounds.extents.x / (w / (float)h)) * 1.02f;
-        cam.orthographicSize = size;
-        cam.aspect = w / (float)h;
-        cam.enabled = false;
-
-        var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
-        cam.targetTexture = rt;
-        cam.Render();
-
-        var crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        GameObject? go = null;
+        GameObject? camGo = null;
+        Camera? cam = null;
+        RenderTexture? rt = null;
+        Texture2D? crop = null;
         var prevActive = RenderTexture.active;
-        RenderTexture.active = rt;
-        crop.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
-        crop.Apply();
-        RenderTexture.active = prevActive;
-        cam.targetTexture = null;
-        RenderTexture.ReleaseTemporary(rt);
-        var png = crop.EncodeToPNG();
-        Object.Destroy(crop);
-        Object.Destroy(camGo);
-        Object.Destroy(go);
-        return png;
+        try
+        {
+            go = new GameObject("_vgmmo_icon");
+            SceneManager.MoveGameObjectToScene(go, exportScene);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+
+            camGo = new GameObject("_vgmmo_iconcam");
+            SceneManager.MoveGameObjectToScene(camGo, exportScene);
+            cam = camGo.AddComponent<Camera>();
+            cam.enabled = false;
+            cam.scene = exportScene;
+            cam.orthographic = true;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            cam.nearClipPlane = 0.1f;
+            cam.farClipPlane = 20f;
+            cam.transform.position = sprite.bounds.center + Vector3.back * 10f;
+            cam.orthographicSize = Mathf.Max(sprite.bounds.extents.y, sprite.bounds.extents.x / (w / (float)h)) * 1.02f;
+            cam.aspect = w / (float)h;
+
+            rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+            cam.targetTexture = rt;
+            cam.Render();
+
+            crop = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            RenderTexture.active = rt;
+            crop.ReadPixels(new Rect(0f, 0f, w, h), 0, 0);
+            crop.Apply();
+            return crop.EncodeToPNG();
+        }
+        finally
+        {
+            // Destroy is deferred until end-of-frame, but the next export renders now.
+            if (go != null) go.SetActive(false);
+            if (camGo != null) camGo.SetActive(false);
+            RenderTexture.active = prevActive;
+            if (cam != null) cam.targetTexture = null;
+            if (rt != null) RenderTexture.ReleaseTemporary(rt);
+            if (crop != null) Object.Destroy(crop);
+            if (camGo != null) Object.Destroy(camGo);
+            if (go != null) Object.Destroy(go);
+        }
     }
 }

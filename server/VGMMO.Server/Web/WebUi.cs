@@ -159,7 +159,7 @@ public sealed class WebUi
 <header>
   <h1>VGMMO server map</h1>
   <span id="meta">loading…</span>
-  <span id="legend" style="font-size:11px;color:#5f6d85">systems = stars · insignia = factions with stations · green line = gate · <span style="color:#19c8ff">●</span> players</span>
+  <span id="legend" style="font-size:11px;color:#5f6d85">systems = stars · click star to enter system · green line = gate · <span style="color:#19c8ff">●</span> players</span>
 </header>
 <div id="layout">
   <div id="mapwrap"><canvas id="map"></canvas><div id="backbtn">← galaxy (Esc)</div></div>
@@ -273,17 +273,9 @@ function drawGalaxy(world){
     ctx.beginPath(); ctx.arc(x,y,6,0,Math.PI*2); ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.beginPath(); ctx.arc(x,y,2.5,0,Math.PI*2); ctx.fill();
-    // Faction insignia row below — ONLY for stations in this system (game rule).
-    const stationFactions = [...new Set((s.pois||[]).filter(p => p.kind === 'station' && p.faction).map(p => p.faction))];
-    stationFactions.forEach((fac, i) => {
-      const file = 'Faction_' + fac;
-      if (!loaded(file)) return;
-      const badge = iconFor(file);
-      const bs = 12, bx = x - (stationFactions.length - 1) * 8 + i * 16, by = y + 22;
-      const bsx = bs / Math.max(badge.naturalWidth, badge.naturalHeight);
-      ctx.drawImage(badge, bx - badge.naturalWidth*bsx/2, by - badge.naturalHeight*bsx/2,
-                    badge.naturalWidth*bsx, badge.naturalHeight*bsx);
-    });
+    // NOTE: no faction emblems at galaxy level — the game only draws emblems under
+    // station POIs in the SYSTEM view (SetPoiFactionIcon). Owner confirmed the
+    // galaxy-level row does not exist in-game.
     labels.push({ x, y, text: 'L' + s.level + ' · ' + s.id, name: s.name });
     // Player dots (MMO layer): real positions, one dot per player.
     const playersHere = (status && status.playerList || []).filter(p => p.system === s.id && p.pos);
