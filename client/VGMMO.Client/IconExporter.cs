@@ -60,16 +60,29 @@ public static class IconExporter
                 }
                 catch (System.Exception e) { MmoPlugin.Instance?.LogSource.LogWarning($"[icons] {kind}: {e.Message}"); }
             }
-            // Real map icons: per-faction (FactionIconSet.mapIcon — what the in-game
-            // galaxy map actually draws at POIs). The WorldMapPOI spriteRenderer is only
-            // the location plate, which is NOT the icon.
+            // Real map icons: per-faction. Faction.GetIcon() is the CANONICAL source
+            // (Resources/Sprites/FactionIcons/<id>Icon) — deterministic. Do NOT use
+            // FactionIconSet.Get(): its dict is populated by Awake() from multiple
+            // same-named instances, so it nondeterministically returns wrong sheets
+            // (e.g. 'LuminateSmall' collage) depending on load order.
             foreach (Faction faction in Faction.all)
             {
                 try
                 {
-                    var set = FactionIconSet.Get(faction);
-                    var sprite = set?.mapIcon;
-                    if (sprite == null) continue;
+                    var sprite = faction.GetIcon();
+                    if (sprite == null)
+                    {
+                        var set = FactionIconSet.Get(faction);
+                        sprite = set?.mapIcon;
+                    }
+                    // '<Shipset>Small' sprites are ship-skin collage sheets grabbed from
+                    // wrong same-named FactionIconSet instances (dict filled by Awake
+                    // order) — never the map emblem. Skip instead of clobbering good PNGs.
+                    if (sprite == null || sprite.name.EndsWith("Small"))
+                    {
+                        MmoPlugin.Instance?.LogSource.LogWarning($"[icons] faction {faction.identifier}: skipping sprite '{sprite?.name}' (not a map emblem)");
+                        continue;
+                    }
                     var png = CropPng(sprite);
                     if (png == null) continue;
                     var path = Path.Combine(dir, "Faction_" + faction.identifier + ".png");

@@ -248,6 +248,14 @@ function drawMap(){
       const file = 'Poi_' + (ICON_FILES[kind] || 'SpaceStation');
       const box = 40;
       if (loaded(file)){
+        // Soft radial glow behind the plate — the game's backgroundRenderer
+        // (radial-particle) does exactly this under every POI; without it the
+        // plates read flat/wrong against the dark map.
+        const g = ctx.createRadialGradient(px,py,4,px,py,box*0.95);
+        g.addColorStop(0,'rgba(150,185,255,0.28)');
+        g.addColorStop(1,'rgba(150,185,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(px,py,box*0.95,0,Math.PI*2); ctx.fill();
         const img = iconFor(file);
         const s = box / Math.max(img.naturalWidth, img.naturalHeight);
         ctx.drawImage(img, px - img.naturalWidth*s/2, py - img.naturalHeight*s/2,
