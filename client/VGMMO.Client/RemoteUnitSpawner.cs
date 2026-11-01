@@ -85,6 +85,12 @@ public static class RemoteUnitSpawner
             // replica to the clone fallback. Try now; on throw, retry next frame.
             TryDisableEquipment(unit);
             Reseed(unit);
+            // Gameplay spawns at station/docked scenes can leave ship renderers
+            // disabled (the same class as the clone fallback's '0 renderers') —
+            // the unit would exist, pursue and tooltip, yet be INVISIBLE. The
+            // clone must always be visible; the game's own visibility handling
+            // (SetRenderersVisible) is for docked/hidden ships.
+            try { unit.SetRenderersVisible(true); } catch { }
             MmoPlugin.Instance?.LogSource.LogInfo($"[replica] spawned real unit '{shipId}' ({unit.name}) at poi '{poi.name}'");
             LogEngineState(unit);
             return new Handle { Data = data, Unit = unit, Poi = poi };
@@ -136,6 +142,15 @@ public static class RemoteUnitSpawner
         string mass = F(() => unit.rigidbody.mass);
         string bodyType = F(() => unit.rigidbody.bodyType);
         string speedCap = F(() => unit.GetSpeedCap());
+        int visRen = 0, totRen = 0;
+        try
+        {
+            var rs = unit.GetComponentsInChildren<Renderer>(true);
+            totRen = rs.Length;
+            foreach (var r in rs) if (r.enabled) visRen++;
+        }
+        catch { }
+        MmoPlugin.Instance?.LogSource.LogInfo($"[replica] renderers visible={visRen}/{totRen}");
         MmoPlugin.Instance?.LogSource.LogInfo(
             $"[replica] engine={eng} thrust={thrust} side={side} rot={rot} fscale={fscale} mass={mass} bodyType={bodyType} speedCap={speedCap}");
     }
