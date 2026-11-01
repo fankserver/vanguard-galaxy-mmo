@@ -56,6 +56,12 @@ public sealed class MmoSession : MonoBehaviour
     private readonly Dictionary<string, string> _markerShip = new();   // session -> cloned ship id
     private readonly Dictionary<string, GameObject> _markerLabels = new();
     private readonly Dictionary<string, Vector3> _markerLabelOff = new();
+    // INVARIANT (audit R1 follow-up): every _remoteUnits key must have a matching
+    // _remoteState entry — TickStaleReplicas treats a missing pose as insta-stale
+    // (despawn without grace). True today because only player keys enter (TrySpawn
+    // requires name+fullName; companions pass null -> markers only). If real units
+    // are ever spawned under companion keys (session#guid), key _remoteState by the
+    // same handle key at packet time.
     private readonly Dictionary<string, RemoteUnitSpawner.Handle> _remoteUnits = new();
 
     private void RemoveLabel(string key)
