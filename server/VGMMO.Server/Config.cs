@@ -16,8 +16,9 @@ public sealed class ServerConfig
     /// so ship state/direction/thrust can be verified with one client.</summary>
     public bool ShadowGhost { get; set; } = true;
     /// <summary>Number of simulated pilots (see Core.GhostPilot) that patrol the hosted
-    /// systems; 0 disables. They appear on the web map and in in-game mirrors.</summary>
-    public int GhostPilots { get; set; } = 2;
+    /// systems; 0 disables. They appear on the web map and in in-game mirrors. Test
+    /// scaffolding — shipped default 0.</summary>
+    public int GhostPilots { get; set; } = 0;
     /// <summary>Accepted client-build hashes. Empty list = accept any (dev mode).</summary>
     public List<string> AcceptedHashes { get; set; } = new();
 
