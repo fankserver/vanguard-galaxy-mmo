@@ -118,6 +118,20 @@ public static class SelfTest
         public void Dispose() { _manager.Stop(); }
     }
 
+    private const string TestAlphaWorldJson = """
+    {
+      "id": "alpha-world",
+      "name": "Alpha Cluster",
+      "mode": "cluster",
+      "systems": [
+        { "id": "alpha-1", "storyId": "alpha_1", "name": "Alpha One", "x": 0, "y": 0, "level": 1,
+          "pois": [ { "id": "alpha-1-station", "kind": "station", "name": "Alpha Station", "x": 0, "y": 6 } ] }
+      ],
+      "links": [], "timeline": [],
+      "entry": { "name": "Alpha Gate", "targetSystemId": "alpha-1", "sectorGate": false, "unlocked": true, "hubX": 0, "hubY": 0 }
+    }
+    """;
+
     private const string TestUniverseWorldJson = """
     {
       "id": "universe-test",
@@ -159,12 +173,14 @@ public static class SelfTest
         Directory.CreateDirectory(dataDir);
         File.WriteAllText(Path.Combine(worldsDir, "demo.json"), TestWorldJson);
         File.WriteAllText(Path.Combine(worldsDir, "universe.json"), TestUniverseWorldJson);
+        File.WriteAllText(Path.Combine(worldsDir, "alpha.json"), TestAlphaWorldJson);
 
         var cfg = new ServerConfig
         {
             Port = 0, WebPort = FreePort(), WorldsDir = worldsDir, DataDir = dataDir,
             AcceptedHashes = new List<string> { "test-build-1" },
             HelloTimeoutMs = 15000,
+            ShadowGhost = true,
         };
         var core = new ServerCore(cfg);
         core.Init();
@@ -237,6 +253,31 @@ public static class SelfTest
                 Check("mode refusal not registered", core.ActivePlayerCount() == playersBefore);
                 modeBad.Dispose();
             }
+
+            // M5.S7: deterministic world selection — alpha-first by id among the
+            // mode match (no DefaultWorld), and DefaultWorld wins when set.
+            using (var sel = new TestClient())
+            {
+                sel.Connect(transport.Port);
+                sel.Poll(300);
+                sel.Send(MsgTypes.Hello, new HelloRequest { Name = "Sel", ClientBuildHash = "test-build-1" });
+                var sw = sel.Receive(MsgTypes.Welcome, 3000);
+                Check("world selection alpha-first", sw != null && (sw.Msg?["worldId"]?.ToString() ?? "") == "alpha-world");
+                sel.Dispose();
+            }
+            var cfgSave = core.Config;
+            var defWorld = cfgSave.DefaultWorld;
+            cfgSave.DefaultWorld = "demo";
+            using (var sel2 = new TestClient())
+            {
+                sel2.Connect(transport.Port);
+                sel2.Poll(300);
+                sel2.Send(MsgTypes.Hello, new HelloRequest { Name = "Sel2", ClientBuildHash = "test-build-1" });
+                var sw2 = sel2.Receive(MsgTypes.Welcome, 3000);
+                Check("default-world wins", sw2 != null && (sw2.Msg?["worldId"]?.ToString() ?? "") == "demo");
+                sel2.Dispose();
+            }
+            cfgSave.DefaultWorld = defWorld;
             core.Tick(); transport.Poll();
 
             // C2: wrong build -> Refused
@@ -311,7 +352,10 @@ public static class SelfTest
             // Deterministic: restart the world clock AFTER alice is in-system — on
             // cold runs the 1s announce used to fire into an empty room (no session
             // in hub-1 yet), which made this check flaky.
-            core.Planner.ResetWorldClock(core.Worlds().First(kv => kv.Value.Mode == "cluster").Key);
+            // The test KNOWS the world id it authored — never resolve by dictionary
+            // enumeration order (a second cluster world would silently change which
+            // timeline gets reset, and an empy-timeline world makes C9 fail).
+            core.Planner.ResetWorldClock("demo");
             var evt = alice.Receive(MsgTypes.Event, 9000);
             Check("planner timeline event", evt != null && (evt.Msg?["command"]?.ToString() ?? "") == "announce");
 

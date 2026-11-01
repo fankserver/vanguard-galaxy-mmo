@@ -1,0 +1,30 @@
+{
+  "id": "cluster-demo-2",
+  "name": "Demo Hub Two",
+  "mode": "cluster",
+  "systems": [
+    {
+      "id": "hub2-1",
+      "storyId": "hub2_1",
+      "name": "Hub Two Anchor",
+      "x": 0, "y": 0, "level": 2, "faction": "TradingGuild",
+      "pois": [
+        { "id": "hub2-1-station", "kind": "station", "name": "Anchor Station", "x": 0, "y": 6, "faction": "TradingGuild", "level": 2,
+          "facilities": ["Airlock", "GeneralShop", "TradeTerminal", "Bar", "Shipyard"] },
+        { "id": "hub2-1-mine", "kind": "mining", "name": "Anchor Field", "x": 14, "y": -2, "faction": "TradingGuild", "level": 2 }
+      ]
+    },
+    {
+      "id": "hub2-2",
+      "storyId": "hub2_2",
+      "name": "Hub Two Reach",
+      "x": 18, "y": 4, "level": 3, "faction": "TradingGuild",
+      "pois": [
+        { "id": "hub2-2-salvage", "kind": "salvage", "name": "Reach Wrecks", "x": -2, "y": 5, "faction": "TradingGuild", "level": 3 }
+      ]
+    }
+  ],
+  "links": [ { "a": "hub2-1", "b": "hub2-2" } ],
+  "timeline": [],
+  "entry": { "name": "Hub Two Gate", "targetSystemId": "hub2-1", "sectorGate": false, "unlocked": true, "hubX": 0, "hubY": 0 }
+}

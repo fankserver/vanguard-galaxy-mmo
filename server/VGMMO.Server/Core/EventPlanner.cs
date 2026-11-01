@@ -32,8 +32,13 @@ public sealed class EventPlanner
     /// scheduled event can be observed deterministically after a session joined.</summary>
     public void ResetWorldClock(string worldId)
     {
+        if (!_core.Worlds().TryGetValue(worldId, out var w))
+        {
+            Console.WriteLine($"ResetWorldClock: world '{worldId}' not found (test API misuse)");
+            return;
+        }
         _nextEntry[worldId] = 0;
-        if (_core.Worlds().TryGetValue(worldId, out var w)) w.StartedAtMs = ServerCore.NowMs();
+        w.StartedAtMs = ServerCore.NowMs();
     }
 
     public void Tick()

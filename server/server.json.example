@@ -1,4 +1,10 @@
 {
+  // shadowGhost: test scaffolding — a clone of the most recent in-cluster player,
+  // relayed beside them. false by default; enable explicitly in test configs.
+  "shadowGhost": false,
+  // defaultWorld: preferred world (id or name) for joins; empty = first
+  // alphabetical-by-id world matching the requested mode.
+  "defaultWorld": "demo",
   "port": 34567,
   "webPort": 8080,
   "dataDir": "data",

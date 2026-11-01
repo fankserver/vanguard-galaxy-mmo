@@ -26,6 +26,7 @@ public sealed class MmoUi : MonoBehaviour
     }
 
     private bool _confirmLeave;
+    private int _modeIdx;   // 0 = cluster (server shipped default), 1 = universe
 
     private void OnGUI()
     {
@@ -57,13 +58,21 @@ public sealed class MmoUi : MonoBehaviour
         else if (GUILayout.Button("Connect"))
         {
             var port = int.TryParse(_port, out var p) ? p : 34567;
-            session.Connect(_host, port, MmoPlugin.Instance?.PlayerName.Value ?? "", MmoPlugin.Instance?.BuildHash.Value ?? "vgmmo-night-1");
+            var mode = _modeIdx == 1 ? "universe" : "cluster";
+            var ses = MmoPlugin.Instance?.Session;
+            if (ses == null) return;
+            if (ses.Connected) ses.ReconnectWithMode(mode);
+            else ses.Connect(_host, port, MmoPlugin.Instance?.PlayerName.Value ?? "", MmoPlugin.Instance?.BuildHash.Value ?? "vgmmo-night-1", mode);
         }
         GUILayout.Label("F8 to hide", GUILayout.Width(80));
         GUILayout.EndHorizontal();
 
         _status = session.Status + (session.SessionId.Length > 0 ? " · " + session.SessionId[..6] : "");
         GUILayout.Label("Status: " + _status);
+        GUILayout.BeginHorizontal();
+        GUILayout.Label("mode", GUILayout.Width(42));
+        _modeIdx = GUILayout.SelectionGrid(_modeIdx, new[] { "cluster", "universe" }, 2);
+        GUILayout.EndHorizontal();
         if (MmoUniverse.Active)
         {
             if (GUILayout.Button(_confirmLeave ? "Confirm LEAVE UNIVERSE" : "Leave Universe"))

@@ -230,8 +230,16 @@ public sealed class ServerCore
         // Mode resolution must mirror every other refusal: BEFORE the session is
         // registered, so a refused join never occupies a player slot nor logs a
         // phantom leave on disconnect.
+        // Deterministic world selection (review verdict): explicit DefaultWorld knob
+        // first, else alphabetical-by-id among the mode match, else refuse — never
+        // filesystem/dictionary enumeration order (a new file could silently swap
+        // which world a join lands in).
         var mode = string.IsNullOrEmpty(hello.Mode) ? "cluster" : hello.Mode;
-        var world = _worlds.Values.FirstOrDefault(w => w.Mode == mode);
+        var worldsMode = _worlds.Values.Where(w => w.Mode == mode)
+            .OrderBy(w => w.Id, StringComparer.Ordinal).ToList();
+        var world = worldsMode.FirstOrDefault(w => string.Equals(w.Id, Config.DefaultWorld, StringComparison.Ordinal)
+                || string.Equals(w.Name, Config.DefaultWorld, StringComparison.Ordinal))
+            ?? worldsMode.FirstOrDefault();
         if (world == null)
         {
             Activity.Add("refuse", $"refused {HelloTrim(hello.Name)}: no '{mode}' world hosted");
