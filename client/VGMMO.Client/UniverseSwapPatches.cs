@@ -8,8 +8,74 @@ using UnityEngine;
 
 namespace VGMMO.Client;
 
-/// <summary>M5 universe-swap console commands + save-slot recorder. Dedicated
-/// *Patches.cs per project convention (Harmony only, no IL rewriting).</summary>
+/// <summary>M5.S3: the universe-session ephemeral guard. Setting
+/// GamePlayer.isEphemeral makes vanilla no-op EVERY save path (verified by S3
+/// audit: StoreAutosaveInBackground -> early return, Store forks on the flag,
+/// and ALL writers - autosave tick, StoreAutosaveState incl. quit-flow,
+/// SaveGameUI.DoSave - funnel through those two). This class is the gatekeeper:
+/// re-entry is refused, exit clears the flag AFTER restore (S5 owns that order).</summary>
+public static class MmoUniverse
+{
+    public static bool Active { get; private set; }
+
+    public static bool Enter()
+    {
+        if (Active)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[universe] re-entry refused (session already active)");
+            return false;
+        }
+        // The flag lives on GamePlayer — with no loaded player the guard would be
+        // Active=true but NON-FUNCTIONAL (saves would silently proceed while the
+        // suppression logs fire). Refuse instead of lying about the state.
+        if (GamePlayer.current == null)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[universe] enter refused: no loaded player (guard cannot apply)");
+            return false;
+        }
+        Active = true;
+        GamePlayer.current.isEphemeral = true;
+        MmoPlugin.Instance?.LogSource.LogInfo("[universe] ephemeral guard ON (no save writes while connected)");
+        return true;
+    }
+
+    public static void Exit()
+    {
+        Active = false;
+        if (GamePlayer.current != null) GamePlayer.current.isEphemeral = false;
+        MmoPlugin.Instance?.LogSource.LogInfo("[universe] ephemeral guard OFF");
+    }
+}
+
+/// <summary>M5 universe-swap console commands + save-slot recorder + S3 save-path
+/// suppression logs. Dedicated *Patches.cs per project convention (Harmony only).</summary>
+[HarmonyPatch(typeof(SaveGame))]
+public static class UniverseSaveSuppressPatches
+{
+    /// <summary>Store is the funnel for DoSave (manual save UI) and StoreAutosaveState
+    /// (side menu + quit flow). Log every suppressed attempt while a universe session
+    /// is active — the vanilla isEphemeral short-circuit already blocks the write
+    /// (SaveGame.cs:149); this is visibility for the acceptance criteria.</summary>
+    [HarmonyPatch(nameof(SaveGame.Store))]
+    [HarmonyPrefix]
+    private static void OnStore(string saveName)
+    {
+        if (MmoUniverse.Active)
+            MmoPlugin.Instance?.LogSource.LogInfo($"[universe] save suppressed: Store('{saveName}') — ephemeral guard ON");
+    }
+
+    /// <summary>Autosave tick (GameplayManager) and the debug 'asv' command take the
+    /// StoreAutosaveInBackground path — its own isEphemeral short-circuit is
+    /// SaveGame.cs:114; log here for the same acceptance visibility.</summary>
+    [HarmonyPatch(nameof(SaveGame.StoreAutosaveInBackground))]
+    [HarmonyPrefix]
+    private static void OnBackgroundAutosave()
+    {
+        if (MmoUniverse.Active)
+            MmoPlugin.Instance?.LogSource.LogInfo("[universe] save suppressed: StoreAutosaveInBackground — ephemeral guard ON");
+    }
+}
+
 [HarmonyPatch(typeof(SaveGameFile))]
 public static class UniverseSwapPatches
 {
@@ -60,6 +126,11 @@ public static class UniverseSwapPatches
                 case "check":
                     MmoPlugin.Instance?.LogSource.LogInfo($"[sidecar] check: {(HomeGalaxySidecar.MapMatchesSidecar(slot) ? "map equal" : "MAP DIFFERS")}");
                     break;
+                case "ue":
+                    if (parts.Length > 1 && parts[1].ToLowerInvariant() == "on") { MmoUniverse.Enter(); }
+                    else if (parts.Length > 1 && parts[1].ToLowerInvariant() == "off") { MmoUniverse.Exit(); }
+                    else MmoPlugin.Instance?.LogSource.LogInfo($"[universe] ue: {(MmoUniverse.Active ? "on" : "off")}");
+                    break;
                 case "delete":
                     MmoPlugin.Instance?.LogSource.LogInfo($"[sidecar] delete: {(HomeGalaxySidecar.Delete(slot) ? "ok" : "not found")}");
                     break;
@@ -67,7 +138,7 @@ public static class UniverseSwapPatches
                     MmoPlugin.Instance?.LogSource.LogInfo("[sidecar] usage: capture | restore | roundtrip | check | delete");
                     break;
             }
-        }, "[sidecar] capture/restore/roundtrip/check/delete the home-galaxy snapshot"));
+        }, "[universe] ue on|off (ephemeral guard debug) | sidecar capture/restore/roundtrip/check/delete"));
     }
 
     private static IEnumerator RestoreAndReport(string slot)
