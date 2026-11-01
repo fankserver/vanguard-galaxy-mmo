@@ -318,7 +318,8 @@ public sealed class ServerCore
         {
             SystemId = state.SystemId,
             ShipId = state.ShipId,
-            X = state.X + 0.012f,   // ~3 game units — right beside the ship (1/50 of the old 150)
+            X = state.X + 0.5f,     // ~125 game units — clearly beside the ship, so the
+                                    // clone reads as a distinct vessel while it mirrors
             Y = state.Y,
             Rot = state.Rot, Vx = state.Vx, Vy = state.Vy, Seq = state.Seq,
             // Companions mirror too (offset keeps them aligned with the shadow).
