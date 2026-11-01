@@ -28,6 +28,14 @@ public sealed class EventPlanner
 
     public Snapshot Capture() => new() { NextEntry = new Dictionary<string, int>(_nextEntry) };
 
+    /// <summary>Test hook: rewind a world's timeline (clock + entry index) so a
+    /// scheduled event can be observed deterministically after a session joined.</summary>
+    public void ResetWorldClock(string worldId)
+    {
+        _nextEntry[worldId] = 0;
+        if (_core.Worlds().TryGetValue(worldId, out var w)) w.StartedAtMs = ServerCore.NowMs();
+    }
+
     public void Tick()
     {
         var nowMs = ServerCore.NowMs();

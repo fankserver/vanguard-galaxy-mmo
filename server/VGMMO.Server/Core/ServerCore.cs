@@ -448,7 +448,7 @@ public sealed class ServerCore
             // hello deadline + idle timeout
             foreach (var s in _byPeer.Values.ToList())
             {
-                if (!s.HelloReceived && now - s.ConnectedAtMs > 5000) Drop(s, "hello timeout");
+                if (!s.HelloReceived && now - s.ConnectedAtMs > Config.HelloTimeoutMs) Drop(s, "hello timeout");
                 else if (s.HelloReceived && now - s.LastActivityMs > 30000) Drop(s, "idle timeout");
             }
             TickGhosts(now);

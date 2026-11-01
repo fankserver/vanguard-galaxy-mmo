@@ -21,6 +21,9 @@ public sealed class ServerConfig
     public int GhostPilots { get; set; } = 0;
     /// <summary>Accepted client-build hashes. Empty list = accept any (dev mode).</summary>
     public List<string> AcceptedHashes { get; set; } = new();
+    /// <summary>Grace period for Hello after a peer connects (ms). Tests raise it:
+    /// cold-start connects can complete near the 5s mark and their Hello lands late.</summary>
+    public int HelloTimeoutMs { get; set; } = 5000;
 
     public static ServerConfig Load(string path)
     {

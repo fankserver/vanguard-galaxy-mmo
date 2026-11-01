@@ -19,14 +19,20 @@ public static class SelfTest
 {
     private sealed class TestClient : IDisposable
     {
-        private readonly EventBasedNetListener _listener = new();
-        private readonly NetManager _manager;
+        private EventBasedNetListener _listener = new();
+        private NetManager _manager = null!;
         private readonly List<Envelope> _inbox = new();
         private NetPeer? _peer;
         public NetPeer? Peer => _peer;
 
         public TestClient()
         {
+            NewManager();
+        }
+
+        private void NewManager()
+        {
+            _listener = new EventBasedNetListener();
             _manager = new NetManager(_listener) { UpdateTime = 15 };
             _listener.PeerConnectedEvent += p => _peer = p;
             _listener.NetworkReceiveEvent += (p, r, ch, del) =>
@@ -38,13 +44,38 @@ public static class SelfTest
 
         public void Connect(int port)
         {
+            // Cold starts (first run after a rebuild) can lag the handshake; one
+            // full retry with a fresh manager absorbs JIT/time-warmup instead of
+            // failing a run that would be green when warm. Throw only if BOTH fail.
+            for (var attempt = 1; attempt <= 2; attempt++)
+            {
+                try { ConnectOnce(port); return; }
+                catch (InvalidOperationException) when (attempt == 1)
+                {
+                    _manager.Stop(); _peer = null; NewManager();
+                }
+            }
+            throw new InvalidOperationException($"TestClient: no connection within 15s (port {port})");
+        }
+
+        private void ConnectOnce(int port)
+        {
             _manager.Start();
             _manager.Connect(new IPEndPoint(IPAddress.Loopback, port), "vgmmo");
-            // Cold-start determinism: wait for the peer handshake instead of a fixed
-            // poll (first run after a rebuild otherwise drops the Hello -> cascade).
-            var until = Environment.TickCount64 + 2000;
-            while (_peer == null && Environment.TickCount64 < until) { _manager.PollEvents(); Thread.Sleep(5); }
+            // Wait for the peer handshake, generously: a test that silently proceeds
+            // with no peer no-ops every send and cascades into false FAILs (the
+            // pre-S2a ~30% flake). Throw on timeout — a failed connect is a failed test.
+            var until = Environment.TickCount64 + 15000;
+            while (Environment.TickCount64 < until)
+            {
+                _manager.PollEvents();
+                if (_peer != null && _peer.ConnectionState == ConnectionState.Connected) return;
+                Thread.Sleep(5);
+            }
+            throw new InvalidOperationException($"TestClient: no connection within 15s (port {port})");
         }
+
+        public bool Connected => _peer != null && _peer.ConnectionState == ConnectionState.Connected;
 
         public void Poll(int ms)
         {
@@ -72,10 +103,16 @@ public static class SelfTest
 
         public void Send(string type, object msg, bool reliable = true)
         {
+            // A send must never silently no-op; but a peer can transiently leave the
+            // Connected state right after handshake (cold-start socket settle) — give
+            // it a short window, then FAIL LOUDLY (a broken test must not skip its send).
+            var until = Environment.TickCount64 + 2000;
+            while (!Connected && Environment.TickCount64 < until) { _manager.PollEvents(); Thread.Sleep(2); }
+            if (!Connected) throw new InvalidOperationException($"TestClient.Send({type}): no connected peer (state={( _peer != null ? _peer.ConnectionState.ToString() : "null")}) — a no-op send is a broken test");
             var frame = Wire.Encode(type, msg);
             var w = new NetDataWriter();
             w.Put(frame.Length); w.Put(frame);
-            _peer?.Send(w, reliable ? DeliveryMethod.ReliableOrdered : DeliveryMethod.Unreliable);
+            _peer!.Send(w, reliable ? DeliveryMethod.ReliableOrdered : DeliveryMethod.Unreliable);
         }
 
         public void Dispose() { _manager.Stop(); }
@@ -127,6 +164,7 @@ public static class SelfTest
         {
             Port = 0, WebPort = FreePort(), WorldsDir = worldsDir, DataDir = dataDir,
             AcceptedHashes = new List<string> { "test-build-1" },
+            HelloTimeoutMs = 15000,
         };
         var core = new ServerCore(cfg);
         core.Init();
@@ -182,15 +220,19 @@ public static class SelfTest
                 Check("universe hello/welcome", uniWelcome != null
                     && (uniWelcome.Msg?["mode"]?.ToString() ?? "") == "universe"
                     && (uniWelcome.Msg?["worldId"]?.ToString() ?? "") == "universe-test");
+                // Exercise the universe session lifecycle (join -> leave) end to end.
+                uniAlice.Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = "univ-1" });
+                Check("universe join", uniAlice.Receive(MsgTypes.SystemEntered, 2000) != null);
                 // M5.S1: unknown mode -> Refused BEFORE session registration.
                 using var modeBad = new TestClient();
                 modeBad.Connect(transport.Port);
                 modeBad.Poll(300);
+                var playersBefore = core.ActivePlayerCount();
                 modeBad.Send(MsgTypes.Hello, new HelloRequest { Name = "Bogus", ClientBuildHash = "test-build-1", Mode = "bogus" });
                 var modeRefused = modeBad.Receive(MsgTypes.Refused, 3000);
                 Check("mode mismatch refused", modeRefused != null
                     && (modeRefused.Msg?["reason"]?.ToString() ?? "").Contains("bogus"));
-                Check("mode refusal not registered", core.ActivePlayerCount() == 0);
+                Check("mode refusal not registered", core.ActivePlayerCount() == playersBefore);
                 modeBad.Dispose();
             }
             core.Tick(); transport.Poll();
@@ -244,7 +286,11 @@ public static class SelfTest
             Check("ledger transfer", core.Ledger.Cargo.TryGetValue("Alice", out var ai) && ai.GetValueOrDefault("Ore") == 3
                 && core.Ledger.Cargo.TryGetValue("Bob", out var bi) && bi.GetValueOrDefault("Ore") == 2);
 
-            // C9: timeline event fires (world demo has announce at 1s in hub-1)
+            // C9: timeline event fires (world demo has announce at 1s in hub-1).
+            // Deterministic: restart the world clock AFTER alice is in-system — on
+            // cold runs the 1s announce used to fire into an empty room (no session
+            // in hub-1 yet), which made this check flaky.
+            core.Planner.ResetWorldClock(core.Worlds().First(kv => kv.Value.Mode == "cluster").Key);
             var evt = alice.Receive(MsgTypes.Event, 9000);
             Check("planner timeline event", evt != null && (evt.Msg?["command"]?.ToString() ?? "") == "announce");
 
