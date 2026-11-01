@@ -84,14 +84,24 @@ public static class UniverseSwapPatches
     /// save name). The game exposes no "current slot" API, so we observe loads.</summary>
     [HarmonyPatch(nameof(SaveGameFile.LoadSaveGame))]
     [HarmonyPrefix]
-    private static void OnLoadSaveGame(SaveGameFile __instance)
+    private static bool OnLoadSaveGame(SaveGameFile __instance)
     {
+        // Mid-session load is forbidden while a universe session is active: a load
+        // replaces GamePlayer.current with a fresh object — the ephemeral flag would
+        // silently reset and the sidecar's restore target would vanish. (D1 keeps
+        // the swap on the LIVE player, so the flag survives the swap itself.)
+        if (MmoUniverse.Active)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[universe] save load refused mid-session (leave the universe first)");
+            return false;
+        }
         var name = __instance.Name;
         if (!string.IsNullOrEmpty(name))
         {
             HomeGalaxySidecar.LastSaveName = name;
             MmoPlugin.Instance?.LogSource.LogInfo($"[sidecar] save slot: {name}");
         }
+        return true;
     }
 
     /// <summary>Registers debug-console commands for the S2 acceptance round trip:
@@ -125,6 +135,9 @@ public static class UniverseSwapPatches
                     break;
                 case "check":
                     MmoPlugin.Instance?.LogSource.LogInfo($"[sidecar] check: {(HomeGalaxySidecar.MapMatchesSidecar(slot) ? "map equal" : "MAP DIFFERS")}");
+                    break;
+                case "join":
+                    MmoPlugin.Instance?.Session?.ReconnectWithMode("universe");
                     break;
                 case "ue":
                     if (parts.Length > 1 && parts[1].ToLowerInvariant() == "on") { MmoUniverse.Enter(); }

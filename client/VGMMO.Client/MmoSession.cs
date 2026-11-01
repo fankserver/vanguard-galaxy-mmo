@@ -30,6 +30,7 @@ public sealed class MmoSession : MonoBehaviour
 
     private string _host = "";
     private int _port;
+    private string _mode = "cluster";
     private string _name = "";            // nickname (MMO handle)
     private string _fullName = "";        // captain GetFullName() from the save
     private string _title = "";           // selected title display name
@@ -268,10 +269,10 @@ public sealed class MmoSession : MonoBehaviour
         catch (System.Exception e) { Log("identity: " + e.Message); }
     }
 
-    public void Connect(string host, int port, string name, string buildHash)
+    public void Connect(string host, int port, string name, string buildHash, string mode = "cluster")
     {
         if (Connected || _net == null) return;
-        _host = host; _port = port; _name = name; _buildHash = buildHash;
+        _host = host; _port = port; _name = name; _buildHash = buildHash; _mode = mode;
         try
         {
             _net.Start();
@@ -284,6 +285,14 @@ public sealed class MmoSession : MonoBehaviour
             Log("connect failed: " + e.Message);
             Status = "connect failed";
         }
+    }
+
+    /// <summary>Reconnect with a different join mode (universe/cluster). The auto
+    /// reconnect loop will retry if the server is momentarily down.</summary>
+    public void ReconnectWithMode(string mode)
+    {
+        Disconnect();
+        Connect(_host, _port, _name, _buildHash, mode);
     }
 
     public void Disconnect()
@@ -310,6 +319,7 @@ public sealed class MmoSession : MonoBehaviour
             FullName = _fullName,
             Title = _title,
             TitleColor = _titleColor,
+            Mode = _mode,
         });
     }
 
@@ -329,8 +339,14 @@ public sealed class MmoSession : MonoBehaviour
                 // would reap them). Clearing on welcome kills the dual-live race where
                 // two copies of the same player sat inside each other while rotating.
                 DespawnAllReplicas("welcome");
-                Log($"welcome: session {_sessionId} world {w?.WorldId} (layout {w?.LayoutHash?[..12]}) hosted {_hosted.Count} systems");
+                Log($"welcome: session {_sessionId} world {w?.WorldId} mode={w?.Mode ?? ""} (layout {w?.LayoutHash?[..12]}) hosted {_hosted.Count} systems");
                 MmoPlugin.Instance?.World.SetLayout(w?.World, w?.LayoutHash ?? "");
+                if (string.Equals(w?.Mode, "universe", StringComparison.Ordinal) && w?.World != null)
+                {
+                    // Universe mode: the welcome layout IS the shared world; the join
+                    // flow swaps the galaxy, guards saves, and only then joins a system.
+                    MmoPlugin.Instance?.StartCoroutine(UniverseSwap.JoinRoutine(w.World, w.LayoutHash ?? ""));
+                }
                 break;
             case MsgTypes.SystemEntered:
                 var se = Wire.Read<SystemEnteredMessage>(env);

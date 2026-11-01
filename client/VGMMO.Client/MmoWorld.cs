@@ -94,6 +94,10 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         _sector = null;
     }
 
+    /// <summary>Universe mode: the builder is driven by the join flow (BuildUniverse)
+    /// and Update() stops auto-building/tearing down the cluster.</summary>
+    public bool UniverseMode;
+
     public void SetLayout(WorldLayout? layout, string layoutHash = "")
     {
         _layout = layout;
@@ -110,6 +114,10 @@ public sealed class MmoWorldBuilder : MonoBehaviour
     private void Update()
     {
         if (GamePlayer.current == null) return;
+
+        // Universe mode is owned by UniverseSwap.JoinRoutine (whole-layout build +
+        // sidecar restore on leave); the cluster auto-build/teardown logic must not run.
+        if (UniverseMode) return;
 
         if (_teardownPending)
         {
@@ -228,6 +236,7 @@ public sealed class MmoWorldBuilder : MonoBehaviour
                     system.SetIdentifier(def.Id);
                     system.storyId = def.StoryId; // CreateEmptySystem stamps "tutorial_system_*"; ours wins
                     system.name = def.Name;
+                    try { system.RegenerateStatics(); } catch { }
                 }
                 catch (Exception e)
                 {
@@ -271,6 +280,81 @@ public sealed class MmoWorldBuilder : MonoBehaviour
         {
             Log("cluster build failed: " + e);
         }
+    }
+
+    /// <summary>Whole-galaxy universe build: one sector per layout sector group,
+    /// systems/POIs/links identical to the cluster renderer, hash-stamped sectors.
+    /// Runs once per join (the home galaxy is restored from the sidecar at leave).
+    /// Sector positions are synthetic (grid) — the server layout carries names only;
+    /// positions can be authored later without breaking anything.</summary>
+    public bool BuildUniverse(WorldLayout layout)
+    {
+        try
+        {
+            var map = GamePlayer.current?.map;
+            if (map == null) { Log("universe build: no map"); return false; }
+            var sectors = layout.Systems
+                .Select(s => string.IsNullOrEmpty(s.Sector) ? layout.Id : s.Sector)
+                .Distinct(StringComparer.Ordinal).ToList();
+            var bySector = new Dictionary<string, List<LayoutSystem>>(StringComparer.Ordinal);
+            foreach (var sys in layout.Systems)
+            {
+                var key = string.IsNullOrEmpty(sys.Sector) ? layout.Id : sys.Sector;
+                if (!bySector.TryGetValue(key, out var lst)) bySector[key] = lst = new();
+                lst.Add(sys);
+            }
+            for (var i = 0; i < sectors.Count; i++)
+            {
+                var key = sectors[i];
+                var sector = (SectorMapData)CreateSectorMethod.Invoke(null, new object[] { new Vector2(i * 30f, 0f), key })!;
+                sector.SetIdentifier("mmo-sector-" + layout.Id + ":" + Hash8());
+                map.AddSector(sector);
+                foreach (var def in bySector[key]) BuildSystem(sector, def);
+            }
+            foreach (var link in layout.Links)
+            {
+                var a = _systems.Find(s => s.storyId == link.A || s.guid == link.A);
+                var b = _systems.Find(s => s.storyId == link.B || s.guid == link.B);
+                if (a == null || b == null) { Log("universe link " + link.A + "<->" + link.B + ": missing system"); continue; }
+                try
+                {
+                    CreateGate(a, b,
+                        new Vector2(link.PosAX, link.PosAY), new Vector2(link.PosBX, link.PosBY),
+                        link.Name, link.SectorGate, unlocked: true);
+                }
+                catch (Exception e) { Log("gate " + link.A + "<->" + link.B + ": " + e.Message); }
+            }
+            _built = true;
+            _mapRef = map;
+            Log("universe built: " + _systems.Count + " systems in " + sectors.Count + " sectors");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Log("universe build failed: " + e);
+            return false;
+        }
+    }
+
+    /// <summary>One system (with its POIs) into a sector — shared by the cluster and
+    /// universe builders.</summary>
+    private void BuildSystem(SectorMapData sector, LayoutSystem def)
+    {
+        try
+        {
+            var faction = def.Faction.Length == 0 ? null : Faction.Get(def.Faction);
+            var system = SandboxWorld.CreateEmptySystem(sector, Mathf.Max(1, def.Level), faction, new Vector2(def.X, def.Y));
+            system.SetIdentifier(def.Id);
+            system.storyId = def.StoryId;
+            system.name = def.Name;
+            // Re-seed statics from the stable server id (identity-seed trick): the
+            // ctor seeded RegenerateStatics from a random guid, so clients would
+            // generate different planets/asteroids unless re-seeded after SetIdentifier.
+            try { system.RegenerateStatics(); } catch { }
+            foreach (var p in def.Pois) AddPoi(system, p);
+            _systems.Add(system);
+        }
+        catch (Exception e) { Log("failed to create system " + def.Id + ": " + e.Message); }
     }
 
     /// <summary>Server-driven gate pair: pure replication. `a`'s gate sits at posA and
