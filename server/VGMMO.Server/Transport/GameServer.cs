@@ -45,7 +45,7 @@ public sealed class GameServer : IDisposable
                 }
                 catch (Exception e)
                 {
-                    _core.LogError($"malformed frame from {peer.EndPoint}: {e.Message}");
+                    _core.LogError($"malformed frame from {peer}: {e.Message}");
                 }
             }
         };
@@ -64,7 +64,7 @@ public sealed class GameServer : IDisposable
     public int Port => _manager.LocalPort;
     public void Poll() => _manager.PollEvents();
     public int ConnectedPeers => _manager.ConnectedPeersCount;
-    public string? PeerEndPoint(int id) => _peersById.TryGetValue(id, out var p) ? p.EndPoint.ToString() : null;
+    public string? PeerEndPoint(int id) => _peersById.TryGetValue(id, out var p) ? p.ToString() : null;
 
     public void TrackPeer(NetPeer peer) => _peersById[peer.Id] = peer;
     public void UntrackPeer(NetPeer peer) => _peersById.Remove(peer.Id);

@@ -118,7 +118,7 @@ public sealed class ServerCore
                 Id = Guid.NewGuid().ToString("N")[..8], PeerId = peer.Id,
                 ConnectedAtMs = NowMs(), LastActivityMs = NowMs(),
             };
-            Log($"peer connected: {peer.EndPoint}");
+            Log($"peer connected: {peer}");
         }
     }
 
@@ -135,7 +135,7 @@ public sealed class ServerCore
                 Activity.Add("leave", $"{s.Name} disconnected", s.SystemId ?? "");
                 Log($"{s.Name} disconnected");
             }
-            else Log($"pending peer disconnected: {peer.EndPoint}");
+            else Log($"pending peer disconnected: {peer}");
             _dirty = true;
         }
     }
@@ -628,7 +628,7 @@ public sealed class ServerCore
     private void RefuseAndDrop(NetPeer peer, string reason)
     {
         Transport?.Send(peer, MsgTypes.Refused, new RefusedResponse { Reason = reason });
-        Log($"refused {peer.EndPoint}: {reason}");
+        Log($"refused {peer}: {reason}");
         // Give the refused frame a moment to flush before disconnecting; otherwise the
         // client sees disconnect before Refused and shows a generic error.
         _ = Task.Run(async () =>
