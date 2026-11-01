@@ -353,6 +353,11 @@ public sealed class MmoSession : MonoBehaviour
                 // two copies of the same player sat inside each other while rotating.
                 DespawnAllReplicas("welcome");
                 Log($"welcome: session {_sessionId} world {w?.WorldId} mode={w?.Mode ?? ""} (layout {w?.LayoutHash?[..12]}) hosted {_hosted.Count} systems");
+                // Universe mode: arm the builder BEFORE SetLayout — otherwise the
+                // cluster auto-build could see the universe layout for a frame and
+                // build it as a single-sector cluster before the join flow takes over.
+                if (string.Equals(w?.Mode, "universe", StringComparison.Ordinal) && w?.World != null)
+                    MmoPlugin.Instance?.World.UniverseMode = true;
                 MmoPlugin.Instance?.World.SetLayout(w?.World, w?.LayoutHash ?? "");
                 if (string.Equals(w?.Mode, "universe", StringComparison.Ordinal) && w?.World != null)
                 {

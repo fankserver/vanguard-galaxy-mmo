@@ -254,6 +254,25 @@ public static class SelfTest
             // Presence gate: a connected-but-not-in-cluster client is NOT "available".
             Check("presence-gate", core.ActivePlayerCount() == 1 && core.ConnectedCount() == 1);
 
+            // C4b: cross-system isolation — a ship in ANOTHER system must never
+            // reach alice (presence scoping by SystemId, S6).
+            using (var carol = new TestClient())
+            {
+                carol.Connect(transport.Port);
+                carol.Poll(300);
+                carol.Send(MsgTypes.Hello, new HelloRequest { Name = "Carol", ClientBuildHash = "test-build-1" });
+                carol.Receive(MsgTypes.Welcome, 3000);
+                carol.Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = "mine-1" });
+                carol.Receive(MsgTypes.SystemEntered, 2000);
+                for (var i = 0; i < 12; i++) { carol.Send(MsgTypes.ShipState, new ShipStateMessage { SystemId = "mine-1", ShipId = "Hauler", X = i, Y = 0, Vx = 1, Vy = 0, Seq = (uint)i }, reliable: false); carol.Poll(60); }
+                // Drain anything already queued on alice, then give it a beat.
+                alice.Receive(MsgTypes.RemoteShipState, 50);
+                var leaked = alice.Receive(MsgTypes.RemoteShipState, 1200);
+                Check("cross-system isolation", leaked == null);
+                carol.Send(MsgTypes.LeaveWorld, new object());
+                carol.Poll(200);
+            }
+
             // C4: bob joins same system
             bob.Connect(transport.Port);
             bob.Poll(300);

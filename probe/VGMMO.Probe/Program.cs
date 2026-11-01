@@ -8,7 +8,7 @@ namespace VGMMO.Probe;
 /// <summary>
 /// Headless client for replication testing: connects, joins a system, broadcasts a
 /// circular ship state and prints everything the server relays back.
-/// Usage: VGMMO.Probe [host] [port] [name] [systemId]
+/// Usage: VGMMO.Probe [host] [port] [name] [systemId] [--mode cluster|universe]
 /// </summary>
 public static class Program
 {
@@ -20,6 +20,9 @@ public static class Program
         var port = args.Length > 1 && int.TryParse(args[1], out var p) ? p : 34567;
         var name = args.Length > 2 ? args[2] : "Probe";
         var system = args.Length > 3 ? args[3] : "hub-1";
+        var mode = "cluster";
+        for (var i = 0; i < args.Length - 1; i++)
+            if (args[i] == "--mode" && i + 1 < args.Length) mode = args[i + 1];
 
         var listener = new EventBasedNetListener();
         var net = new NetManager(listener) { UpdateTime = 15 };
@@ -69,6 +72,7 @@ public static class Program
                             GameVersion = "probe",
                             ClientBuildHash = "vgmmo-night-1",
                             Name = name,
+                            Mode = mode,
                         });
                         hw.Put(hf.Length); hw.Put(hf);
                         peer.Send(hw, DeliveryMethod.ReliableOrdered);
@@ -113,7 +117,7 @@ public static class Program
         {
             case MsgTypes.Welcome:
                 var w = Wire.Read<WelcomeResponse>(env);
-                Console.WriteLine($"[probe] welcome: session {w?.SessionId} world {w?.WorldId}");
+                Console.WriteLine($"[probe] welcome: session {w?.SessionId} world {w?.WorldId} mode={w?.Mode}");
                 var ww = new NetDataWriter();
                 var f = Wire.Encode(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = system });
                 ww.Put(f.Length); ww.Put(f);
