@@ -462,7 +462,7 @@ public sealed class MmoSession : MonoBehaviour
     {
         if (Environment.TickCount - _targetLogAt.GetValueOrDefault(key) < 1000) return;
         _targetLogAt[key] = Environment.TickCount;
-        Log($"replica: target {h.Unit.name} err={err:F0}");
+        Log($"replica: target {h.Unit.name} err={err:F0} v={h.Unit.rigidbody.linearVelocity.magnitude:F0}");
     }
 
     private void SyncMarker(string key, string? name, string? fullName, string? title,
@@ -565,7 +565,11 @@ public sealed class MmoSession : MonoBehaviour
             // renderer clone is only the fallback (unknown hull or no current POI).
             if (name != null && fullName != null)
             {
-                var h = RemoteUnitSpawner.TrySpawn(shipId, _lastFaction, fullName, name, title, titleColor, x, y);
+                // Ghosts carry no ship id — fall back to the player's current hull
+                // class so they spawn as real units (engine + tooltip + animations)
+                // instead of physics-less clones.
+                var spawnShip = shipId.Length == 0 ? CurrentShipId() : shipId;
+                var h = RemoteUnitSpawner.TrySpawn(spawnShip, _lastFaction, fullName, name, title, titleColor, x, y);
                 if (h != null)
                 {
                     _remoteUnits[key] = h;
