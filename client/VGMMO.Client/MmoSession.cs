@@ -287,6 +287,19 @@ public sealed class MmoSession : MonoBehaviour
         }
     }
 
+    /// <summary>Leaves the current system group (used by the leave flow after restore).</summary>
+    public void SendLeaveWorld() => Send(MsgTypes.LeaveWorld, new object());
+
+    /// <summary>Graceful universe leave: request the server flush (FlushAck gates the
+    /// client restore — never restore before the ledger is durable).</summary>
+    public void RequestLeaveUniverse()
+    {
+        if (UniverseSwap.Leaving) { Log("leave: already in progress (re-request = retry if the flush-ack never arrived)"); return; }
+        if ((_mode == "universe" || MmoUniverse.Active) && Connected)
+            Send(MsgTypes.LeaveUniverse, new LeaveUniverseRequest());
+        else Log("leave: not in a universe session");
+    }
+
     /// <summary>Reconnect with a different join mode (universe/cluster). The auto
     /// reconnect loop will retry if the server is momentarily down.</summary>
     public void ReconnectWithMode(string mode)
@@ -347,6 +360,14 @@ public sealed class MmoSession : MonoBehaviour
                     // flow swaps the galaxy, guards saves, and only then joins a system.
                     MmoPlugin.Instance?.StartCoroutine(UniverseSwap.JoinRoutine(w.World, w.LayoutHash ?? ""));
                 }
+                break;
+            case MsgTypes.FlushAck:
+                // Server flushed ledger/persistence durably — restore the home galaxy.
+                // Latched: a second FlushAck (double-click path) must not start a
+                // second restore against the same player/sidecar.
+                if (UniverseSwap.Leaving) { Log("flush-ack ignored (leave already in progress)"); break; }
+                Log("flush-ack received — restoring home galaxy");
+                MmoPlugin.Instance?.StartCoroutine(UniverseSwap.LeaveRoutine(HomeGalaxySidecar.LastSaveName ?? ""));
                 break;
             case MsgTypes.SystemEntered:
                 var se = Wire.Read<SystemEnteredMessage>(env);

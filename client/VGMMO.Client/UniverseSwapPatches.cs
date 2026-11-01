@@ -139,6 +139,12 @@ public static class UniverseSwapPatches
                 case "join":
                     MmoPlugin.Instance?.Session?.ReconnectWithMode("universe");
                     break;
+                case "leave":
+                    MmoPlugin.Instance?.Session?.RequestLeaveUniverse();
+                    break;
+                case "verify":
+                    MmoPlugin.Instance?.LogSource.LogInfo("[sidecar] verify: " + UniverseSwap.VerifyAgainstSaveFile(slot));
+                    break;
                 case "ue":
                     if (parts.Length > 1 && parts[1].ToLowerInvariant() == "on") { MmoUniverse.Enter(); }
                     else if (parts.Length > 1 && parts[1].ToLowerInvariant() == "off") { MmoUniverse.Exit(); }

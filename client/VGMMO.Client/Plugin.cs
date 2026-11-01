@@ -54,6 +54,7 @@ public sealed class MmoPlugin : BaseUnityPlugin
         World = go.AddComponent<MmoWorldBuilder>();
 
         Logger.LogInfo("VGMMO client loaded (autoConnect=" + AutoConnect.Value + ")");
+        UniverseSwap.CheckOrphans();
         if (AutoConnect.Value)
         {
             Session.Connect(Host.Value, Port.Value, PlayerName.Value, BuildHash.Value);

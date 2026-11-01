@@ -180,6 +180,14 @@ public sealed class ServerCore
                 Transport?.Send(peer, MsgTypes.SystemLeft, new SystemLeftMessage { SystemId = session.SystemId ?? "" });
                 session.SystemId = null;
                 break;
+            case MsgTypes.LeaveUniverse:
+                // Flush-before-restore (contract §2 leave): the ledger/persistence
+                // must be durable before the client touches local state, else a crash
+                // after restore loses the final trade.
+                SaveState();
+                Transport?.Send(peer, MsgTypes.FlushAck, new FlushAckMessage());
+                Log($"{session.Name} leaving universe (flushed)");
+                break;
             case MsgTypes.ShipState:
                 HandleShipState(peer, session, env);
                 break;

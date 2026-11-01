@@ -21,6 +21,8 @@ public static class MsgTypes
     public const string Pong = "pong";
     public const string JoinWorld = "join-world";
     public const string LeaveWorld = "leave-world";
+    public const string LeaveUniverse = "leave-universe";
+    public const string FlushAck = "flush-ack";
     public const string SystemEntered = "system-entered";
     public const string SystemLeft = "system-left";
     public const string ShipState = "ship-state";
@@ -179,6 +181,13 @@ public sealed class LayoutEntry
     public float HubX;
     public float HubY;
 }
+
+/// <summary>Universe leave request: the client is about to restore its home galaxy;
+/// the server MUST flush ledger/persistence durably BEFORE acking (FlushAck), so a
+/// crash after the client restore can never lose the final trade.</summary>
+public sealed class LeaveUniverseRequest { }
+
+public sealed class FlushAckMessage { }
 
 public sealed class RefusedResponse
 {

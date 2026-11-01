@@ -220,9 +220,11 @@ public static class SelfTest
                 Check("universe hello/welcome", uniWelcome != null
                     && (uniWelcome.Msg?["mode"]?.ToString() ?? "") == "universe"
                     && (uniWelcome.Msg?["worldId"]?.ToString() ?? "") == "universe-test");
-                // Exercise the universe session lifecycle (join -> leave) end to end.
+                // Exercise the universe session lifecycle (join -> flush -> leave) end to end.
                 uniAlice.Send(MsgTypes.JoinWorld, new JoinWorldRequest { SystemId = "univ-1" });
                 Check("universe join", uniAlice.Receive(MsgTypes.SystemEntered, 2000) != null);
+                uniAlice.Send(MsgTypes.LeaveUniverse, new LeaveUniverseRequest());
+                Check("universe flush-ack", uniAlice.Receive(MsgTypes.FlushAck, 2000) != null);
                 // M5.S1: unknown mode -> Refused BEFORE session registration.
                 using var modeBad = new TestClient();
                 modeBad.Connect(transport.Port);

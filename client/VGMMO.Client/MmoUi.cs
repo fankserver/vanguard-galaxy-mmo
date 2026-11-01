@@ -25,6 +25,8 @@ public sealed class MmoUi : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.F8)) _show = !_show;
     }
 
+    private bool _confirmLeave;
+
     private void OnGUI()
     {
         if (!_show || MmoPlugin.Instance == null) return;
@@ -62,6 +64,15 @@ public sealed class MmoUi : MonoBehaviour
 
         _status = session.Status + (session.SessionId.Length > 0 ? " · " + session.SessionId[..6] : "");
         GUILayout.Label("Status: " + _status);
+        if (MmoUniverse.Active)
+        {
+            if (GUILayout.Button(_confirmLeave ? "Confirm LEAVE UNIVERSE" : "Leave Universe"))
+            {
+                if (!_confirmLeave) { _confirmLeave = true; }
+                else { _confirmLeave = false; MmoPlugin.Instance?.Session?.RequestLeaveUniverse(); }
+            }
+        }
+        else _confirmLeave = false;
 
         GUILayout.Label("Log");
         _scroll = GUILayout.BeginScrollView(_scroll, GUILayout.Height(240));
