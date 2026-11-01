@@ -33,7 +33,11 @@ public static class RemoteUnitSpawner
     public static Handle? TrySpawn(string shipId, string factionId, string? fullName, string? callsignName,
         string? title, string? titleColor, float x, float y)
     {
-        var poi = MapPointOfInterest.currentOrNext;
+        // Spawn into the CURRENT system POI, NOT currentOrNext: during travel that
+        // resolves to the GATE manager, and the unit would live in the gate's local
+        // frame/hierarchy (rendering at/around the gate, wrong origin for the
+        // system-local coordinates the server sends).
+        var poi = MapPointOfInterest.current ?? MapPointOfInterest.currentOrNext;
         if (poi == null || string.IsNullOrEmpty(shipId)) return null;
         var hull = GamePlayer.current?.spaceShips?.Find(d => d.name == shipId)?.unitDefinition as Behaviour.Unit.SpaceShip;
         if (hull == null) return null;
@@ -93,6 +97,9 @@ public static class RemoteUnitSpawner
             try { unit.SetRenderersVisible(true); } catch { }
             MmoPlugin.Instance?.LogSource.LogInfo($"[replica] spawned real unit '{shipId}' ({unit.name}) at poi '{poi.name}'");
             LogEngineState(unit);
+            // Instantiate->Awake/Start/InitModules bind engine+rigidbody on the NEXT
+            // frame; re-read the state 1s later so the numbers reflect real binding.
+            MmoPlugin.Instance?.StartCoroutine(LateDiag(unit));
             return new Handle { Data = data, Unit = unit, Poi = poi };
         }
         catch (Exception e)
@@ -124,6 +131,13 @@ public static class RemoteUnitSpawner
         h.Data.positionData.velocity = new Vector2(vx, vy);
         h.Data.positionData.SetDataToRigidbody(h.Unit.rigidbody);
         Reseed(h.Unit);
+    }
+
+    private static System.Collections.IEnumerator LateDiag(AbstractUnit unit)
+    {
+        yield return new WaitForSeconds(1f);
+        if (unit == null) yield break;
+        LogEngineState(unit);
     }
 
     /// <summary>One-shot engine diagnostics. PURELY observational and must never
