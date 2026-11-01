@@ -411,6 +411,9 @@ public sealed class MmoSession : MonoBehaviour
     /// replica along the remote's trajectory via the vanilla wingman API. The
     /// ShipNavigator/ApplyThrust pipeline turns that into real motion + animations;
     /// corrections are soft (wider look-ahead) -&gt; retarget -&gt; rare hard snap.</summary>
+    /// <summary>Diagnostic accessor for the render-state dump (player's visible hull).</summary>
+    internal Transform? LocalShipTransform() => LocalShip()?.transform;
+
     private void FixedUpdate()
     {
         TickStaleReplicas();

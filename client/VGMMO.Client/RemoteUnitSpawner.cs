@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
+using Behaviour.Managers;
 using Behaviour.Unit;
 using Source.Galaxy;
 using Source.Player;
@@ -33,12 +36,19 @@ public static class RemoteUnitSpawner
     public static Handle? TrySpawn(string shipId, string factionId, string? fullName, string? callsignName,
         string? title, string? titleColor, float x, float y)
     {
-        // Spawn into the CURRENT system POI, NOT currentOrNext: during travel that
-        // resolves to the GATE manager, and the unit would live in the gate's local
-        // frame/hierarchy (rendering at/around the gate, wrong origin for the
-        // system-local coordinates the server sends).
-        var poi = MapPointOfInterest.current ?? MapPointOfInterest.currentOrNext;
-        if (poi == null || string.IsNullOrEmpty(shipId)) return null;
+        // SPAWN CONTEXT RULE (spark review): a unit must spawn into the manager
+        // whose POI is the player's CURRENT zone, verified by IsPOI — the guard
+        // vanilla uses for persistables. currentOrNext's fallback is the TRAVEL
+        // case, where you must never spawn (the unit would land under whatever
+        // STALE manager is still registered — wrong scene). JumpGates never host
+        // units in vanilla (no payloads, jump-only door) — a gate-spawned unit
+        // lives in a context the game never exercises: defer. Deferral flows into
+        // the existing clone fallback (scene-agnostic, always visible), so the
+        // worst case is a visible marker, never nothing.
+        var poi = MapPointOfInterest.current;
+        if (poi == null || poi is Source.Galaxy.POI.JumpGate) return null;
+        if (BasePoiManager.current == null || !BasePoiManager.current.IsPOI(poi)) return null;
+        if (string.IsNullOrEmpty(shipId)) return null;
         var hull = GamePlayer.current?.spaceShips?.Find(d => d.name == shipId)?.unitDefinition as Behaviour.Unit.SpaceShip;
         if (hull == null) return null;
         AbstractUnit? unit = null;
@@ -97,9 +107,23 @@ public static class RemoteUnitSpawner
             try { unit.SetRenderersVisible(true); } catch { }
             MmoPlugin.Instance?.LogSource.LogInfo($"[replica] spawned real unit '{shipId}' ({unit.name}) at poi '{poi.name}'");
             LogEngineState(unit);
+            // Spawn-context probe (spark): parent chain + positions + first
+            // renderer sorting — discriminates gate-scene vs sorting hypotheses.
+            try
+            {
+                var firstRen = unit.GetComponentsInChildren<Renderer>(true).FirstOrDefault();
+                var par = unit.transform.parent;
+                MmoPlugin.Instance?.LogSource.LogInfo(
+                    $"[replica] ctx parent={(par != null ? par.name + "<-" + (par.parent != null ? par.parent.name : "none") : "null")} " +
+                    $"tpos={unit.transform.position} rbpos={(unit.rigidbody != null ? unit.rigidbody.position.ToString() : "norb")} " +
+                    $"scale={unit.transform.lossyScale} " +
+                    $"ren={(firstRen != null ? firstRen.gameObject.name + "/" + firstRen.sortingLayerName + "/" + firstRen.sortingOrder : "none")}");
+            }
+            catch { }
             // Instantiate->Awake/Start/InitModules bind engine+rigidbody on the NEXT
             // frame; re-read the state 1s later so the numbers reflect real binding.
             MmoPlugin.Instance?.StartCoroutine(LateDiag(unit));
+            MmoPlugin.Instance?.StartCoroutine(LateRenderDiag(unit));
             return new Handle { Data = data, Unit = unit, Poi = poi };
         }
         catch (Exception e)
@@ -131,6 +155,68 @@ public static class RemoteUnitSpawner
         h.Data.positionData.velocity = new Vector2(vx, vy);
         h.Data.positionData.SetDataToRigidbody(h.Unit.rigidbody);
         Reseed(h.Unit);
+    }
+
+    /// <summary>READ-ONLY render diagnostic (astra review): one EndOfFrame paired
+    /// dump of the replica's biggest-hull renderer(s) vs the player's local hull,
+    /// with parent chain, layers, camera inclusion, viewport/frustum, sorting,
+    /// mask and material state. NO behavior change — tells us whether the unit is
+    /// invisible due to hierarchy/layer/mask/coordinate/sorting/material.</summary>
+    private static System.Collections.IEnumerator LateRenderDiag(AbstractUnit unit)
+    {
+        yield return new WaitForSeconds(1f);
+        yield return new WaitForEndOfFrame();
+        if (unit == null) yield break;
+        try
+        {
+            DumpRenderState(unit.transform, "replica");
+            var local = MmoPlugin.Instance?.Session?.LocalShipTransform();
+            if (local != null) DumpRenderState(local, "local");
+        }
+        catch (System.Exception e)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[replica] render-diag failed: " + e.Message);
+        }
+    }
+
+    private static void DumpRenderState(Transform unit, string label)
+    {
+        var renderers = unit.GetComponentsInChildren<Renderer>(true)
+            .OrderByDescending(r => r.bounds.extents.sqrMagnitude)
+            .Take(3).ToList();
+        if (renderers.Count == 0)
+        {
+            MmoPlugin.Instance?.LogSource.LogInfo($"[render-diag {label}] NO renderers");
+            return;
+        }
+        MmoPlugin.Instance?.LogSource.LogInfo($"[render-diag {label}] unit=(w:{unit.position:F0} l:{unit.localPosition:F0}) actSelf={unit.gameObject.activeSelf} actHier={unit.gameObject.activeInHierarchy} scale={unit.lossyScale} layer={unit.gameObject.layer} camMask={~0}");
+        var cameras = Camera.allCameras.Where(c => c != null && c.enabled).ToList();
+        foreach (var r in renderers)
+        {
+            var go = r.gameObject;
+            var chain = new List<string>();
+            for (var t = go.transform; t != null; t = t.parent)
+                chain.Add($"{t.name}(a:{t.gameObject.activeSelf})");
+            var sr = r as SpriteRenderer;
+            var mat = r.sharedMaterial;
+            var sg = go.GetComponentInParent<UnityEngine.Rendering.SortingGroup>();
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"[render-diag {label}] r={go.name} type={r.GetType().Name} en={r.enabled} forceOff={r.forceRenderingOff} " +
+                $"layer={go.layer} wpos={r.transform.position} lpos={r.transform.localPosition} " +
+                $"boundsC={r.bounds.center} boundsE={r.bounds.extents} isVisible={r.isVisible} " +
+                $"sortLayer={r.sortingLayerName} sortOrder={r.sortingOrder} sg={(sg != null ? sg.sortingLayerName + "/" + sg.sortingOrder : "none")} " +
+                $"{(sr != null ? "mask=" + sr.maskInteraction + " a=" + sr.color.a + " " : "")}" +
+                $"mat={(mat != null ? mat.name + "/" + mat.shader?.name + "/rq" + mat.renderQueue + "/prop" + mat.HasProperty("_Color") : "null")}");
+            foreach (var cam in cameras)
+            {
+                var cull = (cam.cullingMask & (1 << go.layer)) != 0;
+                var vp = cam.WorldToViewportPoint(r.bounds.center);
+                var inF = vp.x >= 0 && vp.x <= 1 && vp.y >= 0 && vp.y <= 1 && vp.z >= cam.nearClipPlane && vp.z <= cam.farClipPlane;
+                sb.Append($" [cam:{cam.name}|{cam.gameObject.scene.name}|tex:{(cam.targetTexture != null)}|cull:{cull}|vp:({vp.x:F2},{vp.y:F2},{vp.z:F1})|frust:{inF}]");
+            }
+            sb.Append($" parents:[{string.Join(">", chain)}]");
+            MmoPlugin.Instance?.LogSource.LogInfo(sb.ToString());
+        }
     }
 
     private static System.Collections.IEnumerator LateDiag(AbstractUnit unit)
