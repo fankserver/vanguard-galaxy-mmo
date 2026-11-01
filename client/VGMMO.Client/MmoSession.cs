@@ -402,6 +402,7 @@ public sealed class MmoSession : MonoBehaviour
     /// corrections are soft (wider look-ahead) -&gt; retarget -&gt; rare hard snap.</summary>
     private void FixedUpdate()
     {
+        TickStaleReplicas();
         if (_remoteState.Count == 0 || _remoteUnits.Count == 0) return;
         foreach (var kv in _remoteUnits)
         {
@@ -426,6 +427,27 @@ public sealed class MmoSession : MonoBehaviour
             }
             CounterLabel(kv.Key, kv.Value.Unit.transform);
             ThrottledTargetLog(kv.Key, kv.Value, err);
+        }
+    }
+
+    // R1 (audit): a departed remote sends no packet (the protocol has no
+    // session-left type), so without this a physics-driven replica would hover
+    // forever. 10 s grace covers packet jitter; then despawn + clean the label.
+    private const long StaleDespawnMs = 10000;
+    private void TickStaleReplicas()
+    {
+        if (_remoteUnits.Count == 0) return;
+        var now = Environment.TickCount;
+        foreach (var key in _remoteUnits.Keys.ToList())
+        {
+            if (!_remoteState.TryGetValue(key, out var p) || now - p.TsMs > StaleDespawnMs)
+            {
+                if (_remoteUnits.TryGetValue(key, out var h)) RemoteUnitSpawner.Despawn(h);
+                _remoteUnits.Remove(key);
+                _remoteState.Remove(key);
+                RemoveLabel(key);
+                Log("replica: despawn " + key + " (silent)");
+            }
         }
     }
 
