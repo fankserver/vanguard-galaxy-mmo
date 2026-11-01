@@ -604,7 +604,7 @@ public sealed class MmoSession : MonoBehaviour
                 {
                     _remoteUnits[key] = h;
                     _markerShip[key] = shipId;
-                    var off = new Vector3(0f, u * 0.25f, 0f);
+                    var off = LabelOffsetFor(h.Unit.transform);
                     _markerLabels[key] = BuildLabelRoot(h.Unit.gameObject, name, fullName, title, titleColor, off);
                     _markerLabelOff[key] = off;
                     Log($"replica: real unit for {display} (ship '{shipId}')");
@@ -625,7 +625,7 @@ public sealed class MmoSession : MonoBehaviour
             marker.transform.SetParent(transform, false);
             if (name != null && fullName != null)
             {
-                var off = new Vector3(0f, Mathf.Max(halfLen * 0.45f, u * 0.05f), 0f);
+                var off = LabelOffsetFor(marker.transform);
                 _markerLabels[key] = BuildLabelRoot(marker, name, fullName, title, titleColor, off);
                 _markerLabelOff[key] = off;
             }
@@ -637,6 +637,29 @@ public sealed class MmoSession : MonoBehaviour
 
     /// <summary>Title-colored line above the name (character-menu style), parented to
     /// the host (marker or spawned unit); counter-rotated per tick by the caller.</summary>
+    /// <summary>Label clearance derived from the host's ACTUAL rendered bounds
+    /// (world units above the hull, converted into the host's local frame so the
+    /// per-tick counter-rotation keeps it world-up). Replaces fixed offsets that
+    /// floated the text a whole ship-length above the hull.</summary>
+    private static Vector3 LabelOffsetFor(Transform host)
+    {
+        try
+        {
+            Bounds b = default;
+            var any = false;
+            foreach (var r in host.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!r.enabled || !r.gameObject.activeInHierarchy) continue;
+                if (!any) { b = r.bounds; any = true; }
+                else b.Encapsulate(r.bounds);
+            }
+            var sy = Mathf.Max(Mathf.Abs(host.lossyScale.y), 0.0001f);
+            var wy = any ? b.extents.y + Mathf.Max(b.extents.y * 0.15f, 10f) : 40f;
+            return new Vector3(0f, wy / sy, 0f);
+        }
+        catch { return new Vector3(0f, 40f, 0f); }
+    }
+
     private GameObject BuildLabelRoot(GameObject host, string name, string fullName,
         string? title, string? titleColor, Vector3 off)
     {
