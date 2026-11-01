@@ -126,25 +126,18 @@ public static class RemoteUnitSpawner
     /// reported as data instead of an exception.</summary>
     private static void LogEngineState(AbstractUnit unit)
     {
-        try
-        {
-            var eng = unit.engine;
-            float thrust = 0f, side = 0f, rot = 0f;
-            if (eng != null)
-            {
-                try { thrust = eng.thrust; } catch { }
-                try { side = eng.sideThrust; } catch { }
-                try { rot = eng.rotationalThrust; } catch { }
-            }
-            MmoPlugin.Instance?.LogSource.LogInfo(
-                $"[replica] engine={(eng != null)} thrust={thrust:F1} side={side:F1} rot={rot:F1} " +
-                $"fscale={unit.forwardThrustScale:F2} mass={unit.rigidbody.mass:F1} " +
-                $"bodyType={unit.rigidbody.bodyType} speedCap={unit.GetSpeedCap():F1}");
-        }
-        catch (Exception e)
-        {
-            MmoPlugin.Instance?.LogSource.LogWarning("[replica] engine-query failed: " + e.Message);
-        }
+        // Every field independently: any single getter throwing must not hide the rest.
+        string F(Func<object?> f) { try { var v = f(); return v?.ToString() ?? "null"; } catch (Exception e) { return "ERR(" + e.GetType().Name + ")"; } }
+        string eng = F(() => unit.engine != null);
+        string thrust = F(() => unit.engine == null ? 0f : unit.engine.thrust);
+        string side = F(() => unit.engine == null ? 0f : unit.engine.sideThrust);
+        string rot = F(() => unit.engine == null ? 0f : unit.engine.rotationalThrust);
+        string fscale = F(() => unit.forwardThrustScale);
+        string mass = F(() => unit.rigidbody.mass);
+        string bodyType = F(() => unit.rigidbody.bodyType);
+        string speedCap = F(() => unit.GetSpeedCap());
+        MmoPlugin.Instance?.LogSource.LogInfo(
+            $"[replica] engine={eng} thrust={thrust} side={side} rot={rot} fscale={fscale} mass={mass} bodyType={bodyType} speedCap={speedCap}");
     }
 
     /// <summary>Best-effort equipment guard: disables all weapon/module equipment on
