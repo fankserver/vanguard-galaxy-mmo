@@ -324,6 +324,11 @@ public sealed class MmoSession : MonoBehaviour
                 _hosted.Clear();
                 foreach (var s in w?.Systems ?? new List<WelcomeSystem>())
                     if (!string.IsNullOrEmpty(s.StoryId)) _hosted[s.StoryId] = s.Id;
+                // New stream = new session id: replicas from the OLD stream are dead
+                // (their keys embed the old session id and only the 10 s stale timer
+                // would reap them). Clearing on welcome kills the dual-live race where
+                // two copies of the same player sat inside each other while rotating.
+                DespawnAllReplicas("welcome");
                 Log($"welcome: session {_sessionId} world {w?.WorldId} (layout {w?.LayoutHash?[..12]}) hosted {_hosted.Count} systems");
                 MmoPlugin.Instance?.World.SetLayout(w?.World, w?.LayoutHash ?? "");
                 break;
@@ -460,16 +465,23 @@ public sealed class MmoSession : MonoBehaviour
     /// <summary>Save-time cleanup: replicas are server-stream mirrors and must
     /// never be captured by a save (they'd persist as strays after load). Removes
     /// real units + pose/marker state; the relay respawns them next frame.</summary>
-    internal void DespawnAllForSave()
+    internal void DespawnAllForSave() => DespawnAllReplicas("save");
+
+    internal void DespawnAllReplicas(string why)
     {
-        foreach (var kv in _remoteUnits)
+        if (_remoteUnits.Count > 0)
         {
-            try { RemoteUnitSpawner.Despawn(kv.Value); }
-            catch (System.Exception e) { Log("save cleanup despawn: " + e.Message); }
+            foreach (var kv in _remoteUnits)
+            {
+                try { RemoteUnitSpawner.Despawn(kv.Value); }
+                catch (System.Exception e) { Log($"{why} cleanup despawn: " + e.Message); }
+            }
+            var cleared = _remoteUnits.Count;
+            _remoteUnits.Clear();
+            _remoteState.Clear();
+            _targetLogAt.Clear();
+            Log($"replica: cleared {cleared} for {why}");
         }
-        _remoteUnits.Clear();
-        _remoteState.Clear();
-        _targetLogAt.Clear();
     }
 
     private readonly Dictionary<string, long> _targetLogAt = new();
