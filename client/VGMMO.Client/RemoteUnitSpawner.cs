@@ -37,6 +37,8 @@ public static class RemoteUnitSpawner
         if (poi == null || string.IsNullOrEmpty(shipId)) return null;
         var hull = GamePlayer.current?.spaceShips?.Find(d => d.name == shipId)?.unitDefinition as Behaviour.Unit.SpaceShip;
         if (hull == null) return null;
+        AbstractUnit? unit = null;
+        SpaceShipData? data = null;
         try
         {
             // Player-flagged data (faction == Faction.player) makes
@@ -48,7 +50,7 @@ public static class RemoteUnitSpawner
             // data and are marked alwaysFriendly (no combat behavior). The
             // server-stamped wire identity stays authoritative; the tooltip
             // owner line reads Independent instead of Player (engine first).
-            var data = new SpaceShipData(hull, isPlayer: false, Faction.independent)
+            data = new SpaceShipData(hull, isPlayer: false, Faction.independent)
             {
                 autoActions = null,   // no local AI — the server drives this ship
                 alwaysFriendly = true,
@@ -71,7 +73,7 @@ public static class RemoteUnitSpawner
             var scale = MapPointOfInterest.mapToLocalConversion;
             data.positionData.position = new Vector2(x, y) * scale;
             data.positionData.rotation = 0f;
-            var unit = poi.AddUnit(data);
+            unit = poi.AddUnit(data);
             if (unit == null) return null;
             // Replicas are player-owned ships: they must not behave like armed NPCs.
             // AddToWorld does NOT run the travel path (ReactivateEquipmentAfterTravel),
@@ -84,10 +86,15 @@ public static class RemoteUnitSpawner
             TryDisableEquipment(unit);
             Reseed(unit);
             MmoPlugin.Instance?.LogSource.LogInfo($"[replica] spawned real unit '{shipId}' ({unit.name}) at poi '{poi.name}'");
+            LogEngineState(unit);
             return new Handle { Data = data, Unit = unit, Poi = poi };
         }
         catch (Exception e)
         {
+            // Never leave a half-created unit in the world when later setup throws:
+            // an orphaned real unit is invisible to the driver and stays forever.
+            try { if (data != null) poi.RemoveUnit(data, UnitRemovalReason.Cleared); }
+            catch { }
             MmoPlugin.Instance?.LogSource.LogWarning("[replica] spawn failed: " + e);
             return null;
         }
@@ -111,6 +118,33 @@ public static class RemoteUnitSpawner
         h.Data.positionData.velocity = new Vector2(vx, vy);
         h.Data.positionData.SetDataToRigidbody(h.Unit.rigidbody);
         Reseed(h.Unit);
+    }
+
+    /// <summary>One-shot engine diagnostics. PURELY observational and must never
+    /// fail the spawn: stat getters on a freshly-built module can throw before the
+    /// module finished binding, so the whole query is wrapped and the failure is
+    /// reported as data instead of an exception.</summary>
+    private static void LogEngineState(AbstractUnit unit)
+    {
+        try
+        {
+            var eng = unit.engine;
+            float thrust = 0f, side = 0f, rot = 0f;
+            if (eng != null)
+            {
+                try { thrust = eng.thrust; } catch { }
+                try { side = eng.sideThrust; } catch { }
+                try { rot = eng.rotationalThrust; } catch { }
+            }
+            MmoPlugin.Instance?.LogSource.LogInfo(
+                $"[replica] engine={(eng != null)} thrust={thrust:F1} side={side:F1} rot={rot:F1} " +
+                $"fscale={unit.forwardThrustScale:F2} mass={unit.rigidbody.mass:F1} " +
+                $"bodyType={unit.rigidbody.bodyType} speedCap={unit.GetSpeedCap():F1}");
+        }
+        catch (Exception e)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[replica] engine-query failed: " + e.Message);
+        }
     }
 
     /// <summary>Best-effort equipment guard: disables all weapon/module equipment on
