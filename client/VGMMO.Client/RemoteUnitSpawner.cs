@@ -39,18 +39,19 @@ public static class RemoteUnitSpawner
         if (hull == null) return null;
         try
         {
-            // Faction.Get resolves by reflection onto Source.Galaxy.Factions.<id>;
-            // unknown ids (e.g. legacy 'player' stamps) throw — never let a label
-            // string fail the spawn, fall back to the player faction.
-            Faction? faction = null;
-            if (!string.IsNullOrEmpty(factionId))
-            {
-                try { faction = Faction.Get(factionId); }
-                catch { faction = null; }
-            }
-            var data = new SpaceShipData(hull, isPlayer: false, faction ?? Faction.player)
+            // Player-flagged data (faction == Faction.player) makes
+            // LoadDefaultEquipment use the LEVEL-GATED player builder set
+            // (availableBuilders); a fresh replica has no level, so every slot
+            // comes up empty - 'Cannot find equipmentbuilder' - including the
+            // ENGINE, and the ship can never thrust. NPC resolution uses the
+            // full unfiltered builder set, so replicas spawn as INDEPENDENT
+            // data and are marked alwaysFriendly (no combat behavior). The
+            // server-stamped wire identity stays authoritative; the tooltip
+            // owner line reads Independent instead of Player (engine first).
+            var data = new SpaceShipData(hull, isPlayer: false, Faction.independent)
             {
                 autoActions = null,   // no local AI — the server drives this ship
+                alwaysFriendly = true,
             };
             if (!string.IsNullOrEmpty(fullName))
             {
