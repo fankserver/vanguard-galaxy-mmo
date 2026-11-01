@@ -64,6 +64,13 @@ public static class RemoteUnitSpawner
             data.positionData.rotation = 0f;
             var unit = poi.AddUnit(data);
             if (unit == null) return null;
+            // Replicas are player-owned ships: they must not behave like armed NPCs.
+            // AddToWorld does NOT run the travel path (ReactivateEquipmentAfterTravel),
+            // so equipment state on spawn is unverified-by-design — the game itself
+            // disables equipment for ships it doesn't want shooting (travel path), and
+            // we apply the same rule here: kill the whole turret/weapon risk class.
+            (unit as SpaceShip)?.DisableEquipment();
+            Reseed(unit);
             MmoPlugin.Instance?.LogSource.LogInfo($"[replica] spawned real unit '{shipId}' ({unit.name}) at poi '{poi.name}'");
             return new Handle { Data = data, Unit = unit, Poi = poi };
         }
@@ -74,15 +81,38 @@ public static class RemoteUnitSpawner
         }
     }
 
-    /// <summary>Applies relayed state to the unit (server-side control): position,
-    /// rotation, velocity in world units (local * conversion).</summary>
-    public static void Drive(Handle h, float x, float y, float rot, float vx, float vy)
+    /// <summary>Steers the replica toward a MOVING target in world units — the same
+    /// vanilla call the game uses for wingmen/recovery (SetMovingOverrideDestination).
+    /// The replica's own ShipNavigator + ApplyThrust execute the pursuit, so
+    /// thrust/rotation/banking and their effects fire from real engine calls.</summary>
+    public static void SetTarget(Handle h, float tx, float ty, float tvx, float tvy)
     {
-        var s = MapPointOfInterest.mapToLocalConversion;
-        h.Data.positionData.position = new Vector2(x, y) * s;
+        h.Unit.SetMovingOverrideDestination(new Vector2(tx, ty), new Vector2(tvx, tvy));
+    }
+
+    /// <summary>Rare hard correction: pose snap + effect reseed. Only used when the
+    /// replica diverged beyond HardError or went stale (respawn/transfer edges).</summary>
+    public static void HardSnap(Handle h, float x, float y, float rot, float vx, float vy)
+    {
+        h.Data.positionData.position = new Vector2(x, y);
         h.Data.positionData.rotation = rot;
-        h.Data.positionData.velocity = new Vector2(vx, vy) * s;
+        h.Data.positionData.velocity = new Vector2(vx, vy);
         h.Data.positionData.SetDataToRigidbody(h.Unit.rigidbody);
+        Reseed(h.Unit);
+    }
+
+    /// <summary>Clears particle/trail buffers so a hard snap (or spawn/despawn/
+    /// system transfer) does not streak artifacts from the old pose. Particle
+    /// simulation spaces are left as authored on the prefabs: world-space smoke
+    /// stays behind, local-space exhaust follows the hull.</summary>
+    private static void Reseed(AbstractUnit unit)
+    {
+        try
+        {
+            foreach (var ps in unit.GetComponentsInChildren<ParticleSystem>(true)) ps.Clear(true);
+            foreach (var tr in unit.GetComponentsInChildren<TrailRenderer>(true)) tr.Clear();
+        }
+        catch (Exception e) { MmoPlugin.Instance?.LogSource.LogWarning("[replica] reseed: " + e.Message); }
     }
 
     public static void Despawn(Handle h)

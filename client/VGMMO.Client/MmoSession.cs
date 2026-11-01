@@ -20,7 +20,7 @@ namespace VGMMO.Client;
 public sealed class MmoSession : MonoBehaviour
 {
     private const string ConnectKey = "vgmmo";
-    private const float SendInterval = 0.2f;
+    private const float SendInterval = 0.1f;   // 10 Hz movement frames (trajectory-follow needs denser sampling)
     private const float HeartbeatInterval = 2f;
     private const int MaxFrame = 64 * 1024;
 
@@ -369,12 +369,72 @@ public sealed class MmoSession : MonoBehaviour
     private void UpdateMarker(RemoteShipState rs)
     {
         _lastFaction = rs.Faction;
+        _remoteState[rs.SessionId] = new RemotePose
+        {
+            X = rs.X, Y = rs.Y, Rot = rs.Rot, Vx = rs.Vx, Vy = rs.Vy,
+            TsMs = Environment.TickCount,
+        };
         SyncMarker(rs.SessionId, rs.Name, rs.FullName, rs.Title, rs.TitleColor, rs.ShipId, null,
             rs.X, rs.Y, rs.Rot, rs.Vx, rs.Vy);
         foreach (var c in rs.Companions ?? new List<CompanionState>())
             SyncMarker(rs.SessionId + "#" + c.Id, null, null, null, null, c.ShipId,
                 FindLiveFighter(c.Id)?.transform,
                 c.X, c.Y, c.Rot, c.Vx, c.Vy);
+    }
+
+    /// <summary>Latest relayed pose per remote session (layout-local units).
+    /// Movement is re-executed in TickReplicas at physics cadence; the pose here
+    /// is the remote's trajectory, not a target to be painted onto the replica.</summary>
+    private struct RemotePose { public float X, Y, Rot, Vx, Vy; public long TsMs; }
+    private readonly Dictionary<string, RemotePose> _remoteState = new();
+
+    // Trajectory-follow tuning (world units; 1 layout unit = mapToLocalConversion = 250):
+    private const float LookAhead = 0.8f;       // s — target = remotePos + vel * look
+    private const float LookAheadRetarget = 1.6f; // s — wider net while the replica is behind
+    private const float LookAheadStale = 2.5f;    // s — keep the last trajectory during a gap
+    private const float SoftError = 120f;         // world u — below this the pursuit converges on its own
+    private const float HardError = 1500f;        // world u — above this: pose snap + reseed
+    private const long StaleMs = 2000;            // no fresh pose for this long = treat as a gap
+
+    /// <summary>Physics-cadence driver: every FixedUpdate, steer each real-unit
+    /// replica along the remote's trajectory via the vanilla wingman API. The
+    /// ShipNavigator/ApplyThrust pipeline turns that into real motion + animations;
+    /// corrections are soft (wider look-ahead) -&gt; retarget -&gt; rare hard snap.</summary>
+    private void FixedUpdate()
+    {
+        if (_remoteState.Count == 0 || _remoteUnits.Count == 0) return;
+        foreach (var kv in _remoteUnits)
+        {
+            if (!_remoteState.TryGetValue(kv.Key, out var p)) continue;
+            var s = MapPointOfInterest.mapToLocalConversion;
+            var remote = new Vector2(p.X, p.Y) * s;
+            var rvel = new Vector2(p.Vx, p.Vy) * s;
+            if (kv.Value.Unit == null) continue;
+            var local = kv.Value.Unit.rigidbody.position;
+            var err = (local - remote).magnitude;
+            var fresh = Environment.TickCount - p.TsMs <= StaleMs;
+            if (fresh && err >= HardError)
+            {
+                RemoteUnitSpawner.HardSnap(kv.Value, remote.x, remote.y, p.Rot, rvel.x, rvel.y);
+                Log($"replica: hard snap {kv.Value.Unit.name} err={err:F0}");
+            }
+            else
+            {
+                var look = fresh ? (err > SoftError ? LookAheadRetarget : LookAhead) : LookAheadStale;
+                RemoteUnitSpawner.SetTarget(kv.Value,
+                    remote.x + rvel.x * look, remote.y + rvel.y * look, rvel.x, rvel.y);
+            }
+            CounterLabel(kv.Key, kv.Value.Unit.transform);
+            ThrottledTargetLog(kv.Key, kv.Value, err);
+        }
+    }
+
+    private readonly Dictionary<string, long> _targetLogAt = new();
+    private void ThrottledTargetLog(string key, RemoteUnitSpawner.Handle h, float err)
+    {
+        if (Environment.TickCount - _targetLogAt.GetValueOrDefault(key) < 1000) return;
+        _targetLogAt[key] = Environment.TickCount;
+        Log($"replica: target {h.Unit.name} err={err:F0}");
     }
 
     private void SyncMarker(string key, string? name, string? fullName, string? title,
@@ -388,11 +448,11 @@ public sealed class MmoSession : MonoBehaviour
             {
                 RemoteUnitSpawner.Despawn(rh);
                 _remoteUnits.Remove(key);
+                _remoteState.Remove(key);
                 RemoveLabel(key);
             }
             else
             {
-                RemoteUnitSpawner.Drive(rh, x, y, rot, vx, vy);
                 CounterLabel(key, rh.Unit.transform);
                 return;
             }
