@@ -457,6 +457,21 @@ public sealed class MmoSession : MonoBehaviour
         }
     }
 
+    /// <summary>Save-time cleanup: replicas are server-stream mirrors and must
+    /// never be captured by a save (they'd persist as strays after load). Removes
+    /// real units + pose/marker state; the relay respawns them next frame.</summary>
+    internal void DespawnAllForSave()
+    {
+        foreach (var kv in _remoteUnits)
+        {
+            try { RemoteUnitSpawner.Despawn(kv.Value); }
+            catch (System.Exception e) { Log("save cleanup despawn: " + e.Message); }
+        }
+        _remoteUnits.Clear();
+        _remoteState.Clear();
+        _targetLogAt.Clear();
+    }
+
     private readonly Dictionary<string, long> _targetLogAt = new();
     private void ThrottledTargetLog(string key, RemoteUnitSpawner.Handle h, float err)
     {
