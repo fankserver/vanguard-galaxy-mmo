@@ -81,6 +81,28 @@ public static class SelfTest
         public void Dispose() { _manager.Stop(); }
     }
 
+    private const string TestUniverseWorldJson = """
+    {
+      "id": "universe-test",
+      "name": "Shared Frontier Test",
+      "mode": "universe",
+      "systems": [
+        { "id": "univ-1", "storyId": "univ_1", "name": "Univ One", "x": 0, "y": 0, "level": 2,
+          "sector": "zone-a",
+          "pois": [
+            { "id": "univ-1-station", "kind": "station", "name": "Univ One Station", "x": 0, "y": 6,
+              "facilities": ["Airlock", "GeneralShop", "Bar", "Shipyard", "MissionBoard"] }
+          ] },
+        { "id": "univ-2", "storyId": "univ_2", "name": "Univ Two", "x": 20, "y": 2, "level": 3,
+          "sector": "zone-b",
+          "pois": [ { "id": "univ-2-salvage", "kind": "salvage", "name": "Univ Wrecks", "x": 0, "y": -6 } ] }
+      ],
+      "links": [ { "a": "univ-1", "b": "univ-2" } ],
+      "timeline": [],
+      "entry": { "name": "Arrival", "targetSystemId": "univ-1", "sectorGate": false, "unlocked": true, "hubX": 0, "hubY": 0 }
+    }
+    """;
+
     private static readonly List<string> Failures = new();
     private static int _checks;
 
@@ -99,6 +121,7 @@ public static class SelfTest
         Directory.CreateDirectory(worldsDir);
         Directory.CreateDirectory(dataDir);
         File.WriteAllText(Path.Combine(worldsDir, "demo.json"), TestWorldJson);
+        File.WriteAllText(Path.Combine(worldsDir, "universe.json"), TestUniverseWorldJson);
 
         var cfg = new ServerConfig
         {
@@ -139,6 +162,37 @@ public static class SelfTest
             alice.Send(MsgTypes.Hello, new HelloRequest { Name = "Alice", GameVersion = "0.9.x-test", ClientBuildHash = "test-build-1" });
             var welcome = alice.Receive(MsgTypes.Welcome, 3000);
             Check("hello/welcome", welcome != null && welcome.Msg?["sessionId"] != null);
+
+            // M5.S1: multi-sector universe world loads with mode + sector grouping,
+            // and the layout hash covers mode/sectors (diverges from the cluster world).
+            var worlds = Content.WorldLoader.LoadAll(worldsDir);
+            var uni = worlds.FirstOrDefault(x => x.Mode == "universe");
+            var clusterWorld = worlds.FirstOrDefault(x => x.Mode == "cluster");
+            Check("universe world loads", uni != null && uni.Systems.Count >= 2
+                && uni.Systems.All(ss => ss.Sector.Length > 0) && uni.ComputeLayoutHash().Length == 64
+                && clusterWorld != null && uni.ComputeLayoutHash() != clusterWorld.ComputeLayoutHash());
+
+            // M5.S1: mode negotiation — Hello.Mode selects the world, Welcome echoes it.
+            using (var uniAlice = new TestClient())
+            {
+                uniAlice.Connect(transport.Port);
+                uniAlice.Poll(300);
+                uniAlice.Send(MsgTypes.Hello, new HelloRequest { Name = "U", ClientBuildHash = "test-build-1", Mode = "universe" });
+                var uniWelcome = uniAlice.Receive(MsgTypes.Welcome, 3000);
+                Check("universe hello/welcome", uniWelcome != null
+                    && (uniWelcome.Msg?["mode"]?.ToString() ?? "") == "universe"
+                    && (uniWelcome.Msg?["worldId"]?.ToString() ?? "") == "universe-test");
+                // M5.S1: unknown mode -> Refused BEFORE session registration.
+                using var modeBad = new TestClient();
+                modeBad.Connect(transport.Port);
+                modeBad.Poll(300);
+                modeBad.Send(MsgTypes.Hello, new HelloRequest { Name = "Bogus", ClientBuildHash = "test-build-1", Mode = "bogus" });
+                var modeRefused = modeBad.Receive(MsgTypes.Refused, 3000);
+                Check("mode mismatch refused", modeRefused != null
+                    && (modeRefused.Msg?["reason"]?.ToString() ?? "").Contains("bogus"));
+                Check("mode refusal not registered", core.ActivePlayerCount() == 0);
+                modeBad.Dispose();
+            }
             core.Tick(); transport.Poll();
 
             // C2: wrong build -> Refused

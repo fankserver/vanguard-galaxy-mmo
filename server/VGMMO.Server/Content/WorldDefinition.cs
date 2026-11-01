@@ -7,6 +7,10 @@ public sealed class WorldDefinition
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    /// <summary>"cluster" = hot-added sector in the player's home galaxy;
+    /// "universe" = whole-galaxy shared world (M5 universe swap). Default cluster
+    /// keeps every existing world and client (Hello.Mode empty) working.</summary>
+    public string Mode { get; set; } = "cluster";
     public List<SystemDef> Systems { get; set; } = new();
     public List<LinkDef> Links { get; set; } = new();
     public List<TimelineDef> Timeline { get; set; } = new();
@@ -21,11 +25,11 @@ public sealed class WorldDefinition
         // client materializes, so any authored change is detected by the baker.
         var sb = new System.Text.StringBuilder();
         void W(string s) { sb.Append(s.Length).Append(':').Append(s).Append('|'); }
-        W(Id); W(Name);
+        W(Id); W(Name); W(Mode);
         foreach (var s in Systems.OrderBy(s => s.Id, StringComparer.Ordinal))
         {
             W(s.Id); W(s.StoryId); W(s.Name); W(s.X.ToString("R")); W(s.Y.ToString("R"));
-            W(s.Level.ToString()); W(s.Faction);
+            W(s.Level.ToString()); W(s.Faction); W(s.Sector);
             foreach (var p in s.Pois.OrderBy(p => p.Id, StringComparer.Ordinal))
             {
                 W(p.Id); W(p.Kind); W(p.Name); W(p.X.ToString("R")); W(p.Y.ToString("R")); W(p.Faction);
@@ -67,6 +71,9 @@ public sealed class SystemDef
     public float Y { get; set; }
     public int Level { get; set; } = 1;
     public string Faction { get; set; } = "";
+    /// <summary>Galaxy-map sector this system belongs to (universe mode uses
+    /// several sectors; cluster mode = single sector). Empty = world Id.</summary>
+    public string Sector { get; set; } = "";
     public List<PoiDef> Pois { get; set; } = new();
     public List<PayloadDef> Payloads { get; set; } = new();
 }
@@ -137,6 +144,8 @@ public static class WorldLoader
     {
         if (string.IsNullOrWhiteSpace(world.Id)) throw new InvalidDataException($"{source}: world id required");
         if (string.IsNullOrWhiteSpace(world.Name)) world.Name = world.Id;
+        if (world.Mode != "cluster" && world.Mode != "universe")
+            throw new InvalidDataException($"{source}: invalid mode '{world.Mode}' (cluster|universe)");
         var ids = new HashSet<string>(StringComparer.Ordinal);
         // Facility names mirror the game's SpaceStationFacility enum (the server is
         // game-code-free, so the authoritative name list lives here).
@@ -153,6 +162,7 @@ public static class WorldLoader
         {
             if (string.IsNullOrWhiteSpace(s.Id)) throw new InvalidDataException($"{source}: system id required");
             if (!ids.Add(s.Id)) throw new InvalidDataException($"{source}: duplicate system id {s.Id}");
+            if (string.IsNullOrWhiteSpace(s.Sector)) s.Sector = world.Id;  // single-sector default
             foreach (var p in s.Pois)
             {
                 if (string.IsNullOrWhiteSpace(p.Id)) throw new InvalidDataException($"{source}: POI id required in {s.Id}");

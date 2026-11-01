@@ -145,6 +145,7 @@ public sealed class WebUi
                     storyId = s.StoryId,
                     name = s.Name,
                     x = s.X, y = s.Y, level = s.Level, faction = s.Faction,
+                    sector = s.Sector,
                     pois = s.Pois.Select(p => new { id = p.Id, kind = p.Kind, name = p.Name, x = p.X, y = p.Y, faction = p.Faction, level = p.Level, facilities = p.Facilities }),
                     payloads = s.Payloads,
                 }),

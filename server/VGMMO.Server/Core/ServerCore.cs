@@ -20,6 +20,7 @@ public sealed class ServerCore
         public string TitleColor = "";      // hex color of the title
         public string GameVersion = "";
         public string BuildHash = "";
+        public string WorldMode = "cluster";
         public bool HelloReceived;
         public string? SystemId;
         public long LastActivityMs;
@@ -218,6 +219,18 @@ public sealed class ServerCore
         if (ActivePlayerCount() >= Config.MaxPlayersPerWorld * Math.Max(1, _worlds.Count))
         { RefuseAndDrop(peer, "server full"); return; }
 
+        // Mode resolution must mirror every other refusal: BEFORE the session is
+        // registered, so a refused join never occupies a player slot nor logs a
+        // phantom leave on disconnect.
+        var mode = string.IsNullOrEmpty(hello.Mode) ? "cluster" : hello.Mode;
+        var world = _worlds.Values.FirstOrDefault(w => w.Mode == mode);
+        if (world == null)
+        {
+            Activity.Add("refuse", $"refused {HelloTrim(hello.Name)}: no '{mode}' world hosted");
+            RefuseAndDrop(peer, $"no '{mode}' world hosted");
+            return;
+        }
+
         session.HelloReceived = true;
         session.Name = SanitizeName(hello.Name);
         session.FullName = hello.FullName;
@@ -226,13 +239,13 @@ public sealed class ServerCore
         session.GameVersion = hello.GameVersion;
         session.BuildHash = hello.ClientBuildHash;
         _byId[session.Id] = session;
-
-        var world = _worlds.Values.FirstOrDefault() ?? new WorldDefinition();
+        session.WorldMode = mode;
         Transport?.Send(peer, MsgTypes.Welcome, new WelcomeResponse
         {
             SessionId = session.Id,
             WorldId = world.Id,
             WorldName = world.Name,
+            Mode = world.Mode,
             ServerTimeMs = NowMs(),
             LayoutHash = world.ComputeLayoutHash(),
             Systems = world.Systems.Select(s => new WelcomeSystem { Id = s.Id, StoryId = s.StoryId }).Where(s => s.StoryId.Length > 0).ToList(),

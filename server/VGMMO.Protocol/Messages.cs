@@ -89,6 +89,9 @@ public sealed class HelloRequest
     public string FullName = "";      // captain GetFullName() from the save (mirror display)
     public string Title = "";         // selected title display name (mirror display)
     public string TitleColor = "";    // hex color of the title
+    /// <summary>Join mode: "cluster" (hot-added sector in the home galaxy) or
+    /// "universe" (whole-galaxy swap into a separate shared world). Empty = cluster.</summary>
+    public string Mode = "";
 }
 
 public sealed class WelcomeResponse
@@ -96,6 +99,7 @@ public sealed class WelcomeResponse
     public string SessionId = "";
     public string WorldId = "";
     public string WorldName = "";
+    public string Mode = "";          // world mode the client joined (cluster/universe)
     public long ServerTimeMs = 0;
     public string LayoutHash = "";
     /// <summary>Hosted systems: storyId -> system id. A client is "in the MMO cluster"
@@ -117,6 +121,7 @@ public sealed class WorldLayout
 {
     public string Id = "";
     public string Name = "";
+    public string Mode = "";
     public List<LayoutSystem> Systems { get; set; } = new();
     public List<LayoutLink> Links { get; set; } = new();
     public LayoutEntry? Entry { get; set; }
@@ -126,6 +131,7 @@ public sealed class LayoutSystem
 {
     public string Id = "";
     public string StoryId = "";
+    public string Sector = "";
     public string Name = "";
     public float X;
     public float Y;

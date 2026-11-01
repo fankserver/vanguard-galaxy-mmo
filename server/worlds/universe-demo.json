@@ -1,0 +1,36 @@
+{
+  "id": "universe-demo",
+  "name": "Shared Frontier",
+  "mode": "universe",
+  "systems": [
+    {
+      "id": "u-hub",
+      "storyId": "u_hub",
+      "name": "Frontier Hub",
+      "x": 0, "y": 0, "level": 2, "faction": "Independent",
+      "sector": "frontier-gate",
+      "pois": [
+        { "id": "u-hub-station", "kind": "station", "name": "Waypoint Station", "x": 0, "y": 6, "faction": "Independent", "level": 2,
+          "facilities": ["Airlock", "GeneralShop", "TradeTerminal", "Bar", "Shipyard", "MissionBoard"] },
+        { "id": "u-hub-mining", "kind": "mining", "name": "Cold Vein", "x": -18, "y": 0, "faction": "Independent", "level": 2 }
+      ]
+    },
+    {
+      "id": "u-far",
+      "storyId": "u_far",
+      "name": "Distant Reach",
+      "x": 22, "y": 3, "level": 3, "faction": "IndustrialGuild",
+      "sector": "frontier-gate",
+      "pois": [
+        { "id": "u-far-salvage", "kind": "salvage", "name": "Old Wrecks", "x": 0, "y": -8, "faction": "IndustrialGuild", "level": 3 }
+      ]
+    }
+  ],
+  "links": [
+    { "a": "u-hub", "b": "u-far" }
+  ],
+  "timeline": [
+    { "at": 0, "systemId": "u-hub", "command": "announce", "args": { "text": "Welcome to the Shared Frontier" } }
+  ],
+  "entry": { "name": "Arrival Gate", "targetSystemId": "u-hub", "sectorGate": false, "unlocked": true, "hubX": 0, "hubY": 0 }
+}
