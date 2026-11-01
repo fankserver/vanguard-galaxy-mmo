@@ -275,7 +275,7 @@ public sealed class ServerCore
             Transport?.SendPeer(target, MsgTypes.RemoteShipState, new RemoteShipState
             {
                 SessionId = session.Id, Name = session.Name, SystemId = state.SystemId,
-                ShipId = state.ShipId, Faction = "player",
+                ShipId = state.ShipId, Faction = "Player",
                 X = state.X, Y = state.Y, Rot = state.Rot, Vx = state.Vx, Vy = state.Vy,
                 Seq = state.Seq, Ts = NowMs(), Companions = state.Companions,
             }, reliable: false);
@@ -332,7 +332,7 @@ public sealed class ServerCore
         {
             SessionId = "shadow:" + session.Id, Name = _shadow.Name,
             FullName = _shadow.FullName, Title = "", TitleColor = "#BDBDBD",
-            SystemId = _shadow.SystemId, ShipId = _shadow.State.ShipId, Faction = "player",
+            SystemId = _shadow.SystemId, ShipId = _shadow.State.ShipId, Faction = "Player",
             X = _shadow.State.X, Y = _shadow.State.Y, Rot = _shadow.State.Rot,
             Vx = _shadow.State.Vx, Vy = _shadow.State.Vy, Seq = _shadow.State.Seq, Ts = NowMs(),
             Companions = _shadow.State.Companions,
@@ -484,7 +484,7 @@ public sealed class ServerCore
                 Transport?.SendPeer(pid, MsgTypes.RemoteShipState, new RemoteShipState
                 {
                     SessionId = "ghost:" + g.Id, Name = g.Name, FullName = g.FullName,
-                    Title = g.Title, TitleColor = g.TitleColor, SystemId = g.SystemId, Faction = "player",
+                    Title = g.Title, TitleColor = g.TitleColor, SystemId = g.SystemId, Faction = "Player",
                     X = g.State.X, Y = g.State.Y, Rot = g.State.Rot, Vx = g.State.Vx, Vy = g.State.Vy,
                     Seq = g.State.Seq, Ts = now,
                 }, reliable: false);

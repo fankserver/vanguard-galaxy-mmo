@@ -39,7 +39,15 @@ public static class RemoteUnitSpawner
         if (hull == null) return null;
         try
         {
-            var faction = !string.IsNullOrEmpty(factionId) ? Faction.Get(factionId) : null;
+            // Faction.Get resolves by reflection onto Source.Galaxy.Factions.<id>;
+            // unknown ids (e.g. legacy 'player' stamps) throw — never let a label
+            // string fail the spawn, fall back to the player faction.
+            Faction? faction = null;
+            if (!string.IsNullOrEmpty(factionId))
+            {
+                try { faction = Faction.Get(factionId); }
+                catch { faction = null; }
+            }
             var data = new SpaceShipData(hull, isPlayer: false, faction ?? Faction.player)
             {
                 autoActions = null,   // no local AI — the server drives this ship
@@ -69,14 +77,17 @@ public static class RemoteUnitSpawner
             // so equipment state on spawn is unverified-by-design — the game itself
             // disables equipment for ships it doesn't want shooting (travel path), and
             // we apply the same rule here: kill the whole turret/weapon risk class.
-            (unit as SpaceShip)?.DisableEquipment();
+            // The guard must NEVER fail the spawn: a fresh AddUnit's module children
+            // may not have bound their refs yet, so a throwing module degrades the
+            // replica to the clone fallback. Try now; on throw, retry next frame.
+            TryDisableEquipment(unit);
             Reseed(unit);
             MmoPlugin.Instance?.LogSource.LogInfo($"[replica] spawned real unit '{shipId}' ({unit.name}) at poi '{poi.name}'");
             return new Handle { Data = data, Unit = unit, Poi = poi };
         }
         catch (Exception e)
         {
-            MmoPlugin.Instance?.LogSource.LogWarning("[replica] spawn failed: " + e.Message);
+            MmoPlugin.Instance?.LogSource.LogWarning("[replica] spawn failed: " + e);
             return null;
         }
     }
@@ -99,6 +110,29 @@ public static class RemoteUnitSpawner
         h.Data.positionData.velocity = new Vector2(vx, vy);
         h.Data.positionData.SetDataToRigidbody(h.Unit.rigidbody);
         Reseed(h.Unit);
+    }
+
+    /// <summary>Best-effort equipment guard: disables all weapon/module equipment on
+    /// the replica. A derived module's Deactivate can throw while the fresh unit's
+    /// children are still binding refs; that must degrade nothing — retry on the
+    /// next frame once Awake/OnEnable finished.</summary>
+    private static void TryDisableEquipment(AbstractUnit unit)
+    {
+        var ship = unit as SpaceShip;
+        if (ship == null) return;
+        try { ship.DisableEquipment(); }
+        catch (Exception e)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[replica] equipment guard deferred: " + e.Message);
+            MmoPlugin.Instance?.StartCoroutine(DeferredDisable(ship));
+        }
+    }
+
+    private static System.Collections.IEnumerator DeferredDisable(SpaceShip ship)
+    {
+        yield return null;
+        try { if (ship != null) ship.DisableEquipment(); }
+        catch (Exception e) { MmoPlugin.Instance?.LogSource.LogWarning("[replica] equipment guard failed: " + e.Message); }
     }
 
     /// <summary>Clears particle/trail buffers so a hard snap (or spawn/despawn/
