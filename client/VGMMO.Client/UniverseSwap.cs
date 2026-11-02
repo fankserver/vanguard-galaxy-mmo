@@ -251,13 +251,24 @@ public static class UniverseSwap
 
     /// <summary>Undock listener: fires the armed join once the player is out of the
     /// interior and not traveling. Called every Update from MmoSession.</summary>
+    private static float _pendingLogAt;
+
     public static void TickPending()
     {
         if (!PendingJoin) return;
         if (MmoUniverse.Active || Joining || Leaving) { PendingJoin = false; return; }
-        if (Behaviour.UI.Spacestation.SpaceStationInterior.instance != null) return;
+        var interior = Behaviour.UI.Spacestation.SpaceStationInterior.instance != null;
         var travel = Behaviour.Util.Singleton<TravelManager>.Instance;
-        if (travel != null && travel.TravelActive()) return;
+        var traveling = travel != null && travel.TravelActive();
+        // Diagnostic: what is holding the pending join? Once per second so a silent
+        // wait is never indistinguishable from a lost arm.
+        if (Time.unscaledTime - _pendingLogAt > 1f)
+        {
+            _pendingLogAt = Time.unscaledTime;
+            MmoPlugin.Instance?.LogSource.LogInfo($"[universe] pending wait: interior={interior} traveling={traveling}");
+        }
+        if (interior) return;
+        if (traveling) return;
         var layout = _pendingLayout;
         var hash = _pendingHash;
         PendingJoin = false;
