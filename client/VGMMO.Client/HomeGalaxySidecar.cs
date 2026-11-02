@@ -50,8 +50,21 @@ public static class HomeGalaxySidecar
             var path = SidecarPathFor(saveName);
             if (File.Exists(path))
             {
-                MmoPlugin.Instance?.LogSource.LogWarning($"[sidecar] capture refused: {Path.GetFileName(path)} already exists (stale orphan — keep for inspection and delete manually)");
-                return false;
+                // D3 stale-guard softening (owner-facing): a crash orphan is NOT a
+                // blocker — the ephemeral guard guarantees the home save was never
+                // written, so the orphan carries no unique state. Archive it (kept
+                // for inspection, never silently deleted) and capture fresh.
+                var archived = path + ".orphan-" + DateTime.Now.ToString("yyyyMMddHHmmss");
+                try
+                {
+                    File.Move(path, archived);
+                    MmoPlugin.Instance?.LogSource.LogWarning($"[sidecar] stale orphan archived: {Path.GetFileName(path)} -> {Path.GetFileName(archived)} (fresh capture follows)");
+                }
+                catch (Exception e)
+                {
+                    MmoPlugin.Instance?.LogSource.LogWarning($"[sidecar] capture refused: could not archive orphan ({e.Message}) — delete {Path.GetFileName(path)} manually");
+                    return false;
+                }
             }
             Directory.CreateDirectory(Dir);
             var json = SaveGame.SaveCurrentState().ToString();
