@@ -33,15 +33,24 @@ public static class UniverseSwap
     /// path when a FlushAck never arrives — documented, no more code needed).</summary>
     public static bool Leaving { get; private set; }
 
+    /// <summary>D2 UX (owner request): pressing universe while inside a station
+    /// interior does not hard-refuse — it arms a pending join that auto-fires on the
+    /// FIRST undock (interior exit + not traveling), so the owner doesn't have to
+    /// remember a second press.</summary>
+    public static bool PendingJoin { get; set; }
+    private static WorldLayout? _pendingLayout;
+    private static string _pendingHash = "";
+
     /// <summary>Refuse conditions (D2): interior, mid-travel, a stale transfer, or an
     /// already-active universe session. Returns a reason string or null when ok.</summary>
     public static string? GuardReason()
     {
+        if (PendingJoin) return "universe join pending (undocks to fire)";
         if (MmoUniverse.Active) return "already in a universe session";
         if (Joining) return "join already in progress";
         if (GamePlayer.current == null) return "no loaded player";
         if (GamePlayer.current.worldTransferInProgress) return "world transfer in progress";
-        if (Behaviour.UI.Spacestation.SpaceStationInterior.instance != null) return "inside a space station interior (leave it first)";
+        if (Behaviour.UI.Spacestation.SpaceStationInterior.instance != null) return "inside a space station interior (leaving will auto-join)";
         var travel = Behaviour.Util.Singleton<TravelManager>.Instance;
         if (travel != null && travel.TravelActive()) return "ship is traveling";
         return null;
@@ -240,6 +249,31 @@ public static class UniverseSwap
         pi.SetValue(player, value);
     }
 
+    /// <summary>Undock listener: fires the armed join once the player is out of the
+    /// interior and not traveling. Called every Update from MmoSession.</summary>
+    public static void TickPending()
+    {
+        if (!PendingJoin) return;
+        if (MmoUniverse.Active || Joining || Leaving) { PendingJoin = false; return; }
+        if (Behaviour.UI.Spacestation.SpaceStationInterior.instance != null) return;
+        var travel = Behaviour.Util.Singleton<TravelManager>.Instance;
+        if (travel != null && travel.TravelActive()) return;
+        var layout = _pendingLayout;
+        var hash = _pendingHash;
+        PendingJoin = false;
+        _pendingLayout = null;
+        _pendingHash = "";
+        if (layout != null)
+            MmoPlugin.Instance?.StartCoroutine(JoinRoutine(layout, hash));
+    }
+
+    public static void CancelPending()
+    {
+        PendingJoin = false;
+        _pendingLayout = null;
+        _pendingHash = "";
+    }
+
     /// <summary>Cleanup for an abort BEFORE the detach: the client is connected in
     /// universe mode with the builder armed — reset it so the half-state can't linger
     /// (the owner can then reload/retry).</summary>
@@ -268,7 +302,15 @@ public static class UniverseSwap
         var guard = GuardReason();
         if (guard != null)
         {
-            MmoPlugin.Instance?.LogSource.LogWarning($"[universe] join refused: {guard}");
+            // D2 UX: inside an interior -> arm the pending join (fires on first undock).
+            if (guard.StartsWith("inside a space station interior"))
+            {
+                PendingJoin = true;
+                _pendingLayout = layout;
+                _pendingHash = layoutHash;
+                MmoPlugin.Instance?.LogSource.LogInfo("[universe] interior: join armed — will auto-join on first undock");
+            }
+            else MmoPlugin.Instance?.LogSource.LogWarning($"[universe] join refused: {guard}");
             yield break;
         }
         if (layout?.Systems == null || layout.Systems.Count == 0)

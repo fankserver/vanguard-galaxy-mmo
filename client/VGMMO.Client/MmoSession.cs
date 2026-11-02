@@ -104,6 +104,7 @@ public sealed class MmoSession : MonoBehaviour
 
     private void Update()
     {
+        UniverseSwap.TickPending();
         _net?.PollEvents();
 
         // Auto-reconnect (dev/test convenience): survive server restarts.
