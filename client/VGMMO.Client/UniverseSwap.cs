@@ -284,14 +284,14 @@ public static class UniverseSwap
         // races the staged load. Wait for the player instead of refusing instantly;
         // a genuine no-player state (never loaded) aborts after the grace window.
         var wait = 0f;
-        while (GamePlayer.current == null && wait < 10f)
+        while (GamePlayer.current == null && wait < 60f)
         {
             wait += Time.unscaledDeltaTime;
             yield return null;
         }
         if (GamePlayer.current == null)
         {
-            MmoPlugin.Instance?.LogSource.LogWarning("[universe] join refused: no player after 10s (load a save first)");
+            MmoPlugin.Instance?.LogSource.LogWarning("[universe] join refused: no player after 60s (load a save first)");
             ResetAfterAbort();
             yield break;
         }
