@@ -240,6 +240,18 @@ public static class UniverseSwap
         pi.SetValue(player, value);
     }
 
+    /// <summary>Cleanup for an abort BEFORE the detach: the client is connected in
+    /// universe mode with the builder armed — reset it so the half-state can't linger
+    /// (the owner can then reload/retry).</summary>
+    private static void ResetAfterAbort()
+    {
+        if (MmoPlugin.Instance?.World is { } w)
+        {
+            w.UniverseMode = false;
+            w.SetLayout(null, "");
+        }
+    }
+
     /// <summary>Abort-after-detach recovery: the map is cleared and the guard armed —
     /// restore the sidecar in place and disarm before yielding the join. Restore is
     /// atomic (S2) and proven; the player lands back in their home galaxy.</summary>
@@ -266,8 +278,24 @@ public static class UniverseSwap
         }
 
         Joining = true;
-        var player = GamePlayer.current!;
         var slot = HomeGalaxySidecar.LastSaveName ?? "";
+        // The Welcome can arrive while a save is still loading (GamePlayer.current is
+        // set only at the END of LoadStateStaged) — pressing universe from the menu
+        // races the staged load. Wait for the player instead of refusing instantly;
+        // a genuine no-player state (never loaded) aborts after the grace window.
+        var wait = 0f;
+        while (GamePlayer.current == null && wait < 10f)
+        {
+            wait += Time.unscaledDeltaTime;
+            yield return null;
+        }
+        if (GamePlayer.current == null)
+        {
+            MmoPlugin.Instance?.LogSource.LogWarning("[universe] join refused: no player after 10s (load a save first)");
+            ResetAfterAbort();
+            yield break;
+        }
+        var player = GamePlayer.current!;
         var targetId = "";
         try
         {
